@@ -14,6 +14,7 @@
     },
     "autoload": {
         "psr-4": {
+            "Installer\\": "system/installer-needs",
             "AuraCore\\": "system/core/",
             "SiteControllers\\": "site/controllers/"
         },
@@ -26,13 +27,10 @@
     ],
     "scripts": {
         "post-root-package-install": [
-            "echo 'Welcome to the Aura PHP Framework!'",
-            "echo 'Initializing your project...'"
+            "php system/installer-needs/pre-install-display.php"
         ],
         "post-create-project-cmd": [
-            "echo 'Done initializing your project!'",
-            "echo '> php aura list'",
-            "php aura list"
+            "Installer\\PostInstall::run"
         ],
         "serve": "php aura serve",
         "route:list": "php aura route:list"
