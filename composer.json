@@ -26,12 +26,12 @@
     ],
     "scripts": {
         "post-root-package-install": [
-            "Welcome to the Aura PHP Framework!",
-            "Initializing your project..."
+            "echo 'Welcome to the Aura PHP Framework!'",
+            "echo 'Initializing your project...'"
         ],
         "post-create-project-cmd": [
-            "Done initializing your project!",
-            "> php aura list",
+            "echo 'Done initializing your project!'",
+            "echo '> php aura list'",
             "php aura list"
         ],
         "serve": "php aura serve",
