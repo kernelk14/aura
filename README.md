@@ -13,7 +13,7 @@
 ### Via Composer
 
 ```bash
-composer create-project auraphp/auraphp my-app
+composer create-project kernelk14/aura my-app
 cd my-app
 php aura serve
 ```
@@ -23,8 +23,8 @@ php aura serve
 Clone the repository and point your web server to the project root:
 
 ```bash
-git clone https://github.com/auraphp/auraphp.git
-cd auraphp
+git clone https://github.com/kernelk14/aura.git
+cd aura
 php aura serve
 ```
 
