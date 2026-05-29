@@ -25,13 +25,22 @@
         "aura"
     ],
     "scripts": {
-        "serve": "php bin/aura serve",
-        "route:list": "php bin/aura route:list"
+        "post-root-package-install": {
+            "echo 'Welcome to the Aura PHP Framework!'",
+            "echo 'Initializing your project...'"
+        },
+        "post-root-package-cmd": {
+            "echo 'Done initializing your project!'",
+            "echo '> php aura list'",
+            "php aura list"
+        },
+        "serve": "php aura serve",
+        "route:list": "php aura route:list"
     },
     "extra": {
         "framework": {
             "name": "AuraPHP",
-            "version": "1.0.0"
+            "version": "1.0.3"
         }
     }
 }
