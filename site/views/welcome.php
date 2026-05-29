@@ -19,7 +19,6 @@
 
             <div class="d-flex justify-content-center gap-3 flex-wrap mb-5">
                 <a href="<?= site_url('docs/framework') ?>" class="btn btn-success btn-lg">Get Started</a>
-                <a href="<?= site_url('components') ?>" class="btn btn-outline-info btn-lg">Components</a>
             </div>
 
             <div class="row mb-4">
@@ -78,10 +77,6 @@
 
             <div class="mt-5 pt-4 d-flex justify-content-center gap-3 flex-wrap border-top">
                 <a href="<?= site_url('docs/framework') ?>" class="text-muted text-sm px-3 py-1">Framework Docs</a>
-                <a href="<?= site_url('docs/ownstrap') ?>" class="text-muted text-sm px-3 py-1">OwnStrap Docs</a>
-                <a href="<?= site_url('components') ?>" class="text-muted text-sm px-3 py-1">Components</a>
-                <a href="<?= site_url('colors') ?>" class="text-muted text-sm px-3 py-1">Colors</a>
-                <a href="<?= site_url('demo') ?>" class="text-muted text-sm px-3 py-1">Demo</a>
             </div>
         </div>
     </div>
