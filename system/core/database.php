@@ -20,7 +20,7 @@ class Database extends Base {
         
         switch ($this->driver) {
             case 'mysqli':
-                $this->db = new mysqli(
+                $this->db = new \mysqli(
                     $config['host'],
                     $config['username'],
                     $config['password'],
@@ -39,11 +39,11 @@ class Database extends Base {
             case 'pdo_sqlite':
                 $dsn = $config['dsn'] ?? $this->buildDsn($config);
                 $options = [
-                    PDO::ATTR_ERRMODE => PDO::ERRMODE_EXCEPTION,
-                    PDO::ATTR_DEFAULT_FETCH_MODE => PDO::FETCH_ASSOC,
+                    \PDO::ATTR_ERRMODE => \PDO::ERRMODE_EXCEPTION,
+                    \PDO::ATTR_DEFAULT_FETCH_MODE => \PDO::FETCH_ASSOC,
                 ];
                 
-                $this->db = new PDO($dsn, $config['username'], $config['password'], $options);
+                $this->db = new \PDO($dsn, $config['username'], $config['password'], $options);
                 break;
                 
             default:
