@@ -1,0 +1,37 @@
+{
+    "name": "auraphp/auraphp",
+    "description": "AuraPHP - Lightweight PHP MVC Framework with OwnStrap CSS",
+    "type": "project",
+    "license": "MIT",
+    "authors": [
+        {
+            "name": "AuraPHP",
+            "homepage": "https://auraphp.dev"
+        }
+    ],
+    "require": {
+        "php": ">=7.4"
+    },
+    "autoload": {
+        "psr-4": {
+            "AuraCore\\": "system/core/",
+            "SiteControllers\\": "site/controllers/"
+        },
+        "files": [
+            "system/helpers/url_helper.php"
+        ]
+    },
+    "bin": [
+        "aura"
+    ],
+    "scripts": {
+        "serve": "php bin/aura serve",
+        "route:list": "php bin/aura route:list"
+    },
+    "extra": {
+        "framework": {
+            "name": "AuraPHP",
+            "version": "1.0.0"
+        }
+    }
+}

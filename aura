@@ -1,0 +1,538 @@
+#!/usr/bin/env php
+<?php
+/**
+ * AuraPHP CLI Tool
+ * 
+ * Usage: php aura <command> [options]
+ * 
+ * Inspired by Laravel Artisan and Spiral Spark.
+ * Run 'php aura list' to see available commands.
+ */
+
+// -------------------------------------------------------
+// Bootstrap
+// -------------------------------------------------------
+define('AURA_ROOT', __DIR__);
+define('AURA_SYSTEM', AURA_ROOT . '/system');
+define('AURA_SITE', AURA_ROOT . '/site');
+
+$version = '1.0.0';
+
+// -------------------------------------------------------
+// Command registry
+// -------------------------------------------------------
+$commands = [
+    'serve' => [
+        'description' => 'Start the PHP development server',
+        'usage' => 'serve [--port=8080] [--host=127.0.0.1]',
+    ],
+    'make:controller' => [
+        'description' => 'Create a new controller',
+        'usage' => 'make:controller <name> [--resource]',
+    ],
+    'make:model' => [
+        'description' => 'Create a new model',
+        'usage' => 'make:model <name>',
+    ],
+    'make:view' => [
+        'description' => 'Create a new view',
+        'usage' => 'make:view <name>',
+    ],
+    'route:list' => [
+        'description' => 'Display all registered routes',
+        'usage' => 'route:list',
+    ],
+    'key:generate' => [
+        'description' => 'Generate an application encryption key',
+        'usage' => 'key:generate',
+    ],
+    'list' => [
+        'description' => 'List all available commands',
+        'usage' => 'list',
+    ],
+];
+
+// -------------------------------------------------------
+// Parse arguments
+// -------------------------------------------------------
+$args = array_slice($argv, 1);
+$command = $args[0] ?? 'list';
+$commandArgs = array_slice($args, 1);
+
+// Parse named options from commandArgs
+$options = [];
+$params = [];
+foreach ($commandArgs as $arg) {
+    if (strpos($arg, '--') === 0) {
+        $parts = explode('=', substr($arg, 2), 2);
+        $options[$parts[0]] = $parts[1] ?? true;
+    } else {
+        $params[] = $arg;
+    }
+}
+
+// -------------------------------------------------------
+// Helpers
+// -------------------------------------------------------
+function write($text, $color = null) {
+    $colors = [
+        'green' => "\033[32m",
+        'red' => "\033[31m",
+        'yellow' => "\033[33m",
+        'blue' => "\033[34m",
+        'cyan' => "\033[36m",
+        'magenta' => "\033[35m",
+        'gray' => "\033[90m",
+        'reset' => "\033[0m",
+        'bold' => "\033[1m",
+    ];
+    $c = $colors[$color] ?? $colors['reset'];
+    $r = $colors['reset'];
+    echo $c . $text . $r;
+}
+
+function writeln($text = '', $color = null) {
+    write($text . "\n", $color);
+}
+
+function success($text) { writeln($text, 'green'); }
+function error($text) { writeln($text, 'red'); }
+function info($text) { writeln($text, 'cyan'); }
+function warn($text) { writeln($text, 'yellow'); }
+
+function studlyCase($name) {
+    return str_replace(' ', '', ucwords(str_replace(['-', '_'], ' ', $name)));
+}
+
+function camelCase($name) {
+    return lcfirst(studlyCase($name));
+}
+
+function kebabCase($name) {
+    return str_replace('_', '-', strtolower(preg_replace('/([a-z])([A-Z])/', '$1-$2', $name)));
+}
+
+function pluralize($name) {
+    $last = strtolower(substr($name, -1));
+    if (in_array($last, ['s', 'x', 'z']) || in_array(strtolower(substr($name, -2)), ['sh', 'ch'])) {
+        return $name . 'es';
+    }
+    if ($last === 'y' && !in_array(strtolower(substr($name, -2, 1)), ['a', 'e', 'i', 'o', 'u'])) {
+        return substr($name, 0, -1) . 'ies';
+    }
+    return $name . 's';
+}
+
+// -------------------------------------------------------
+// Command: list
+// -------------------------------------------------------
+function cmd_list($commands, $version) {
+    writeln();
+    write(" AuraPHP CLI ", 'cyan');
+    writeln(" v{$version}", 'gray');
+    writeln(str_repeat('─', 50), 'gray');
+    writeln();
+
+    $maxLen = max(array_map('strlen', array_keys($commands)));
+
+    foreach ($commands as $cmd => $meta) {
+        write('  ');
+        write(str_pad($cmd, $maxLen + 2), 'green');
+        write($meta['description'], 'gray');
+        writeln();
+    }
+    writeln();
+    writeln(' Run "php aura <command> --help" for more information.', 'gray');
+    writeln();
+}
+
+// -------------------------------------------------------
+// Command: route:list
+// -------------------------------------------------------
+function cmd_route_list() {
+    $routesFile = AURA_SYSTEM . '/config/routes.php';
+
+    if (!file_exists($routesFile)) {
+        error('Routes file not found at system/config/routes.php');
+        return;
+    }
+
+    // Bootstrap the router to extract routes
+    if (!class_exists('AuraCore\\Router')) {
+        require_once AURA_SYSTEM . '/core/router.php';
+    }
+
+    // Capture routes by loading routes config
+    $_SERVER['REQUEST_URI'] = '/aura-route-list';
+    $router = require $routesFile;
+    $routes = $router->getRoutes();
+
+    if (empty($routes)) {
+        warn('No routes registered.');
+        return;
+    }
+
+    writeln();
+    write(str_pad('Method', 8), 'bold');
+    write(str_pad('Path', 40), 'bold');
+    write('Handler', 'bold');
+    writeln();
+    writeln(str_repeat('─', 80), 'gray');
+
+    foreach ($routes as $route) {
+        $method = $route['method'];
+        $colorMap = ['GET' => 'green', 'POST' => 'yellow', 'PUT' => 'blue', 'DELETE' => 'red'];
+        $color = $colorMap[$method] ?? 'gray';
+
+        write(str_pad($route['method'], 8), $color);
+        write(str_pad('/' . $route['path'], 40));
+        writeln($route['handler']);
+    }
+    writeln();
+}
+
+// -------------------------------------------------------
+// Command: serve
+// -------------------------------------------------------
+function cmd_serve($options) {
+    $host = $options['host'] ?? '127.0.0.1';
+    $port = $options['port'] ?? '8080';
+    $docRoot = AURA_ROOT;
+
+    if (isset($options['help'])) {
+        info('Usage: php aura serve [--host=127.0.0.1] [--port=8080]');
+        return;
+    }
+
+    writeln();
+    info(" AuraPHP development server starting...");
+    writeln();
+    write("   Host: ", 'gray');
+    writeln($host, 'cyan');
+    write("   Port: ", 'gray');
+    writeln($port, 'cyan');
+    write("   Root: ", 'gray');
+    writeln($docRoot, 'cyan');
+    writeln();
+    writeln(" Press Ctrl+C to stop the server.", 'gray');
+    writeln();
+
+    $cmd = sprintf(
+        'php -S %s:%d -t %s',
+        escapeshellarg($host),
+        (int)$port,
+        escapeshellarg($docRoot)
+    );
+
+    passthru($cmd);
+}
+
+// -------------------------------------------------------
+// Command: make:controller
+// -------------------------------------------------------
+function cmd_make_controller($params, $options) {
+    $name = $params[0] ?? null;
+    if (!$name) {
+        error('Usage: php aura make:controller <name> [--resource]');
+        return;
+    }
+
+    if (isset($options['help'])) {
+        info('Usage: php aura make:controller <name> [--resource]');
+        info('  --resource  Generate resource methods (index, create, store, show, edit, update, destroy)');
+        return;
+    }
+
+    $className = studlyCase($name);
+    $fileName = kebabCase($name) . '.php';
+    $filePath = AURA_SITE . '/controllers/' . $fileName;
+
+    if (file_exists($filePath)) {
+        error("Controller {$fileName} already exists!");
+        return;
+    }
+
+    if (isset($options['resource'])) {
+        $content = <<<PHP
+<?php
+
+namespace SiteControllers;
+
+use AuraCore\\Controller;
+
+class {$className} extends Controller
+{
+    public function index()
+    {
+        \$data = [
+            'title' => '{$className} List',
+        ];
+        \$this->loadView('{$name}/index', \$data);
+    }
+
+    public function create()
+    {
+        \$data = [
+            'title' => 'Create {$className}',
+        ];
+        \$this->loadView('{$name}/create', \$data);
+    }
+
+    public function store()
+    {
+        // Handle POST request
+        redirect(site_url('{$name}'));
+    }
+
+    public function show(\$id)
+    {
+        \$data = [
+            'title' => '{$className} Details',
+            'id' => \$id,
+        ];
+        \$this->loadView('{$name}/show', \$data);
+    }
+
+    public function edit(\$id)
+    {
+        \$data = [
+            'title' => 'Edit {$className}',
+            'id' => \$id,
+        ];
+        \$this->loadView('{$name}/edit', \$data);
+    }
+
+    public function update(\$id)
+    {
+        // Handle PUT request
+        redirect(site_url('{$name}'));
+    }
+
+    public function destroy(\$id)
+    {
+        // Handle DELETE request
+        redirect(site_url('{$name}'));
+    }
+}
+
+PHP;
+    } else {
+        $content = <<<PHP
+<?php
+
+namespace SiteControllers;
+
+use AuraCore\\Controller;
+
+class {$className} extends Controller
+{
+    public function index()
+    {
+        \$data = [
+            'title' => '{$className}',
+        ];
+        \$this->loadView('{$name}', \$data);
+    }
+}
+
+PHP;
+    }
+
+    file_put_contents($filePath, $content);
+    success("Controller created: site/controllers/{$fileName}");
+}
+
+// -------------------------------------------------------
+// Command: make:model
+// -------------------------------------------------------
+function cmd_make_model($params, $options) {
+    $name = $params[0] ?? null;
+    if (!$name) {
+        error('Usage: php aura make:model <name>');
+        return;
+    }
+
+    if (isset($options['help'])) {
+        info('Usage: php aura make:model <name>');
+        info('Creates a model with base CRUD methods.');
+        return;
+    }
+
+    $className = studlyCase($name) . '_Model';
+    $tableName = strtolower(pluralize(kebabCase($name)));
+    $fileName = kebabCase($name) . '_model.php';
+    $filePath = AURA_SITE . '/models/' . $fileName;
+
+    if (file_exists($filePath)) {
+        error("Model {$fileName} already exists!");
+        return;
+    }
+
+    $content = <<<PHP
+<?php
+
+use AuraCore\\Model;
+
+class {$className} extends Model
+{
+    private \$table = '{$tableName}';
+
+    public function getAll()
+    {
+        \$db = \$this->loadDatabase();
+        return \$db->get(\$this->table);
+    }
+
+    public function getById(\$id)
+    {
+        \$db = \$this->loadDatabase();
+        return \$db->getWhere(\$this->table, ['id' => \$id]);
+    }
+
+    public function create(\$data)
+    {
+        \$db = \$this->loadDatabase();
+        return \$db->insert(\$this->table, \$data);
+    }
+
+    public function update(\$id, \$data)
+    {
+        \$db = \$this->loadDatabase();
+        return \$db->update(\$this->table, \$data, ['id' => \$id]);
+    }
+
+    public function delete(\$id)
+    {
+        \$db = \$this->loadDatabase();
+        return \$db->delete(\$this->table, ['id' => \$id]);
+    }
+}
+
+PHP;
+
+    file_put_contents($filePath, $content);
+    success("Model created: site/models/{$fileName}");
+}
+
+// -------------------------------------------------------
+// Command: make:view
+// -------------------------------------------------------
+function cmd_make_view($params, $options) {
+    $name = $params[0] ?? null;
+    if (!$name) {
+        error('Usage: php aura make:view <name>');
+        return;
+    }
+
+    if (isset($options['help'])) {
+        info('Usage: php aura make:view <name>');
+        info('Creates a view file with the template structure.');
+        return;
+    }
+
+    $fileName = kebabCase($name) . '.php';
+    $filePath = AURA_SITE . '/views/' . $fileName;
+
+    if (file_exists($filePath)) {
+        error("View {$fileName} already exists!");
+        return;
+    }
+
+    $content = <<<PHP
+<?php include 'template.php'; ?>
+
+<div class="container mt-5">
+    <h1 class="mb-4">{$name}</h1>
+    <p class="lead">Your content here.</p>
+</div>
+
+<?php ownstrap_js(); ?>
+</body>
+</html>
+PHP;
+
+    file_put_contents($filePath, $content);
+    success("View created: site/views/{$fileName}");
+}
+
+// -------------------------------------------------------
+// Command: key:generate
+// -------------------------------------------------------
+function cmd_key_generate() {
+    $key = bin2hex(random_bytes(32));
+    $envPath = AURA_ROOT . '/.env';
+    $envExamplePath = AURA_ROOT . '/.env.example';
+
+    if (file_exists($envPath)) {
+        $content = file_get_contents($envPath);
+        if (preg_match('/APP_KEY=.+/', $content)) {
+            $content = preg_replace('/APP_KEY=.+/', "APP_KEY={$key}", $content);
+        } else {
+            $content .= "\nAPP_KEY={$key}\n";
+        }
+        file_put_contents($envPath, $content);
+    } elseif (file_exists($envExamplePath)) {
+        $content = file_get_contents($envExamplePath);
+        $content .= "\nAPP_KEY={$key}\n";
+        file_put_contents($envPath, $content);
+    } else {
+        file_put_contents($envPath, "APP_KEY={$key}\n");
+    }
+
+    success("Application key generated successfully: {$key}");
+    info("Added to .env file.");
+}
+
+// -------------------------------------------------------
+// Dispatch
+// -------------------------------------------------------
+writeln();
+
+switch ($command) {
+    case 'list':
+        cmd_list($commands, $version);
+        break;
+
+    case 'serve':
+        cmd_serve($options);
+        break;
+
+    case 'route:list':
+        cmd_route_list();
+        break;
+
+    case 'make:controller':
+        cmd_make_controller($params, $options);
+        break;
+
+    case 'make:model':
+        cmd_make_model($params, $options);
+        break;
+
+    case 'make:view':
+        cmd_make_view($params, $options);
+        break;
+
+    case 'key:generate':
+        cmd_key_generate();
+        break;
+
+    case '--version':
+    case '-v':
+        writeln("AuraPHP CLI v{$version}", 'cyan');
+        break;
+
+    case 'help':
+    case '--help':
+    case '-h':
+        cmd_list($commands, $version);
+        break;
+
+    default:
+        error("Unknown command: {$command}");
+        writeln();
+        info("Run 'php aura list' to see available commands.");
+        break;
+}
+
+writeln();
