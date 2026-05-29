@@ -1,12 +1,12 @@
 {
-    "name": "aura/framework",
+    "name": "kernelk14/aura",
     "description": "AuraPHP - Lightweight PHP MVC Framework with OwnStrap CSS",
     "type": "project",
     "license": "MIT",
     "authors": [
         {
-            "name": "AuraPHP",
-            "homepage": "https://auraphp.dev"
+            "name": "AuraPHP Framework",
+            "homepage": "https://github.com/kernelk14/aura"
         }
     ],
     "require": {
