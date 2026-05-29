@@ -439,16 +439,10 @@ function cmd_make_view($params, $options) {
     }
 
     $content = <<<PHP
-<?php include 'template.php'; ?>
-
 <div class="container mt-5">
     <h1 class="mb-4">{$name}</h1>
     <p class="lead">Your content here.</p>
 </div>
-
-<?php ownstrap_js(); ?>
-</body>
-</html>
 PHP;
 
     file_put_contents($filePath, $content);

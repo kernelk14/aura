@@ -151,8 +151,6 @@ class QueryBuilder {
     }
     
     public function get($table) {
-        $this->db->setAttribute(PDO::ATTR_ERRMODE, PDO::ERRMODE_EXCEPTION);
-        
         if ($this->driver === 'mysqli') {
             $result = $this->db->query("SELECT * FROM `$table`");
             $data = [];

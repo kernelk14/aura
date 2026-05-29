@@ -12,7 +12,7 @@ class Welcome extends Controller {
             'title' => 'Welcome to AuraPHP',
             'message' => 'This is a minimal PHP framework.'
         ];
-        $this->loadView('welcome', $data);
+        $this->loadView('welcome', $data, false);
     }
     
     public function test($param = '') {

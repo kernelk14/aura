@@ -8,6 +8,6 @@ class Docs extends Controller {
         $data = [
             'title' => 'AuraPHP Framework Documentation'
         ];
-        $this->loadView('docs', $data);
+        $this->loadView('docs', $data, false);
     }
 }

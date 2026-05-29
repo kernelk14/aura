@@ -12,15 +12,28 @@ class Base {
      * @param string $view View name (without .php)
      * @param array $data Data to pass to the view
      */
-    protected function loadView($view, $data = []) {
-        // Extract data to variables
+    protected function loadView($view, $data = [], $useLayout = true) {
         extract($data);
-        
+
         $viewFile = SITE_PATH . 'views/' . $view . '.php';
-        if (file_exists($viewFile)) {
-            require_once $viewFile;
-        } else {
+        if (!file_exists($viewFile)) {
             echo "View not found: {$view}";
+            return;
+        }
+
+        ob_start();
+        require $viewFile;
+        $viewContent = ob_get_clean();
+
+        if ($useLayout) {
+            $layoutFile = SYSTEM_PATH . 'core/content-wrapper.php';
+            if (file_exists($layoutFile)) {
+                require $layoutFile;
+            } else {
+                echo $viewContent;
+            }
+        } else {
+            echo $viewContent;
         }
     }
 

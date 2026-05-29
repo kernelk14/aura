@@ -13,7 +13,7 @@
 ### Via Composer
 
 ```bash
-composer create-project kernelk14/aura my-app
+composer create-project auraphp/auraphp my-app
 cd my-app
 php aura serve
 ```
@@ -23,8 +23,8 @@ php aura serve
 Clone the repository and point your web server to the project root:
 
 ```bash
-git clone https://github.com/kernelk14/aura.git
-cd aura
+git clone https://github.com/auraphp/auraphp.git
+cd auraphp
 php aura serve
 ```
 
@@ -86,17 +86,13 @@ class Hello extends Controller
 ### 5. Create a view
 
 ```php
-<?php include 'template.php'; ?>
-
 <div class="container mt-5 text-center">
     <h1 class="text-gradient-success"><?= htmlspecialchars($title) ?></h1>
     <p class="lead">Welcome to AuraPHP.</p>
 </div>
-
-<?php ownstrap_js(); ?>
-</body>
-</html>
 ```
+
+Views are pure content — no HTML shell needed. The template layout (`DOCTYPE`, `<html>`, `<head>`, `<body>`, navbar, JS) wraps around your view automatically.
 
 ---
 
@@ -154,10 +150,10 @@ my-app/
 │   │   ├── sidebar-framework.php
 │   │   └── sidebar-ownstrap.php
 │   └── views/                   # Application views
-│       └── template.php         # Base HTML template
 ├── system/
 │   ├── core/
 │   │   ├── base.php             # Base class
+│   │   ├── content-wrapper.php    # Base HTML layout
 │   │   ├── controller.php       # Base controller
 │   │   ├── model.php            # Base model
 │   │   ├── router.php           # Router
@@ -314,19 +310,20 @@ Views are plain PHP files in `site/views/`. They receive data as extracted varia
 
 ### Template pattern
 
-Every view should follow this structure:
+Views are pure content — no HTML shell needed. The layout (`template.php`) automatically wraps your view:
 
 ```php
-<?php include 'template.php'; ?>   <!-- HTML shell (head, body open) -->
-
 <div class="container mt-5">
     <h1><?= htmlspecialchars($title) ?></h1>
     <p><?= htmlspecialchars($message) ?></p>
 </div>
+```
 
-<?php ownstrap_js(); ?>            <!-- JavaScript -->
-</body>
-</html>
+The layout provides the DOCTYPE, `<html>`, `<head>` (with `ownstrap_css()`), `<body>` with navbar, and `ownstrap_js()` before the closing `</body>` tag. Your view only needs the middle content.
+
+To skip the layout (e.g. for standalone pages), pass `false` as the third argument:
+```php
+$this->loadView('welcome', $data, false);
 ```
 
 ### Passing data
@@ -625,7 +622,7 @@ Gradients: `.bg-gradient-{color}`, `.text-gradient-{color}`
 
 The `theme-dark` class on `<body>` or any container applies dark mode overrides to all components — cards, tables, navbars, dropdowns, alerts, badges, code blocks, and inputs.
 
-A theme toggle is included in the base template (`site/views/template.php`) with localStorage persistence:
+A theme toggle is included in the base layout (`system/core/content-wrapper.php`) with localStorage persistence:
 
 ```html
 <button class="btn btn-sm btn-outline-info ms-2" onclick="toggleTheme()">🌙</button>

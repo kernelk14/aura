@@ -1,5 +1,14 @@
-<?php include 'template.php'; ?>
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title><?= htmlspecialchars($title ?? 'AuraPHP Framework') ?></title>
+    <?php ownstrap_css(); ?>
+</head>
+<body class="theme-light">
 
+<?php template('navbar');?>
 <div class="d-flex">
     <?php template('sidebar-framework'); ?>
 
@@ -55,10 +64,13 @@ php aura serve</pre>
 ├── site/
 │   ├── controllers/        # Your controllers
 │   ├── models/             # Your models
+│   ├── templates/          # Template partials
+│   │   ├── sidebar-framework.php
+│   │   └── sidebar-ownstrap.php
 │   └── views/              # Your views
-│       └── template.php    # Base HTML template
 └── system/
     ├── core/               # Framework core (Router, Base, Database)
+    │   └── content-wrapper.php  # Base HTML layout
     ├── config/             # Configuration (app, database, routes)
     └── helpers/            # Global helper functions</pre>
 
@@ -204,16 +216,11 @@ class UserProfile extends Controller
 
                     <h5>Template pattern</h5>
                     <p>Every view should follow this structure:</p>
-                    <pre>&lt;?php include 'template.php'; ?&gt;   &lt;!-- HTML shell (head, body open) --&gt;
-
-&lt;div class="container mt-5"&gt;
+                    <pre>&lt;div class="container mt-5"&gt;
     &lt;h1&gt;&lt;?= htmlspecialchars($title) ?&gt;&lt;/h1&gt;
     &lt;p&gt;&lt;?= htmlspecialchars($message) ?&gt;&lt;/p&gt;
-&lt;/div&gt;
-
-&lt;?php ownstrap_js(); ?&gt;            &lt;!-- JavaScript --&gt;
-&lt;/body&gt;
-&lt;/html&gt;</pre>
+&lt;/div&gt;</pre>
+                    <p>Views are pure content — the layout (<code>site/templates/template.php</code>) wraps them automatically. To skip the layout, pass <code>false</code> as the third argument: <code>$this-&gt;loadView('name', $data, false)</code>.</p>
 
                     <h5>Passing data from controllers</h5>
                     <pre>// Controller
@@ -621,6 +628,9 @@ RewriteRule ^(.*)$ index.php/$1 [L]</pre>
 
 <script>
 (function(){for(var e=document.querySelector("aside"),t=e.querySelectorAll('a[href^="#"]'),n=[],o=0;o<t.length;o++){var r=t[o].getAttribute("href").slice(1),l=document.getElementById(r);l&&n.push({id:r,el:l})}function i(){var e=window.scrollY+250,o="";n.forEach(function(t){t.el.offsetTop<=e&&(o=t.id)}),t.forEach(function(e){e.classList.toggle("active",e.getAttribute("href")==="#"+o)})}window.addEventListener("scroll",i,{passive:!0}),i()})();
+</script>
+<script>
+(function(){var t=localStorage.getItem("theme"),b=document.body;if(t&&t!=="theme-light"){b.classList.replace("theme-light","theme-dark");var i=document.getElementById("themeToggle");i&&(i.innerHTML="&#9788;")}})();function toggleTheme(){var e=document.body,i=document.getElementById("themeToggle");e.classList.toggle("theme-dark"),e.classList.toggle("theme-light");var n=e.classList.contains("theme-dark");localStorage.setItem("theme",n?"theme-dark":"theme-light"),i&&(i.innerHTML=n?"&#9788;":"&#9790;")}
 </script>
 <?php ownstrap_js(); ?>
 </body>
