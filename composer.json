@@ -27,7 +27,7 @@
     ],
     "scripts": {
         "post-root-package-install": [
-            "php system/installer-needs/pre-install-display.php"
+            "echo 'Preparing your project...'"
         ],
         "post-create-project-cmd": [
             "Installer\\PostInstall::run"
