@@ -1,28 +1,65 @@
 <?php
-/**
- * Controller Class
- * Base controller for all application controllers
- */
 
 namespace AuraCore;
-use AuraCore\Base;
 
-class Controller extends Base {
-    // Controller-specific methods can be added here
-    
-    /**
-     * Example usage:
-     * 
-     * class Welcome extends Controller {
-     *     public function index() {
-     *         $this->loadView('welcome', [
-     *             'title' => 'Welcome to AuraPHP',
-     *             'message' => 'Powered by TailwindCSS'
-     *         ]);
-     *     }
-     * }
-     * 
-     * TailwindCSS is globally available - just use <?php tailwind_css(); ?>
-     * in your view files to include the compiled CSS.
-     */
+class Controller extends Base
+{
+    protected $request;
+    protected $response;
+
+    public function setRequest($request)
+    {
+        $this->request = $request;
+    }
+
+    protected function request()
+    {
+        if (!$this->request) {
+            $this->request = new Request();
+        }
+        return $this->request;
+    }
+
+    protected function response()
+    {
+        if (!$this->response) {
+            $this->response = new Response();
+        }
+        return $this->response;
+    }
+
+    protected function session()
+    {
+        return new Session();
+    }
+
+    protected function validate(array $data, array $rules, array $messages = [])
+    {
+        $validator = new Validator();
+        return $validator->validate($data, $rules, $messages);
+    }
+
+    protected function auth($modelClass = null)
+    {
+        return new Auth($modelClass);
+    }
+
+    protected function json($data, $status = 200)
+    {
+        return Response::jsonResponse($data, $status);
+    }
+
+    protected function back()
+    {
+        $referer = $_SERVER['HTTP_REFERER'] ?? '/';
+        header("Location: {$referer}");
+        exit;
+    }
+
+    protected function withErrors($errors)
+    {
+        $session = new Session();
+        $session->flash('errors', $errors);
+        return $this;
+    }
 }

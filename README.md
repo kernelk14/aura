@@ -1,10 +1,41 @@
 # AuraPHP
 
+<p>
+  <img src="https://img.shields.io/badge/PHP-7.4%2B-777BB4?logo=php" alt="PHP 7.4+"/>
+  <img src="https://img.shields.io/badge/version-1.0-blue" alt="Version 1.0"/>
+  <img src="https://img.shields.io/badge/size-~150KB-green" alt="Size ~150KB"/>
+  <img src="https://img.shields.io/badge/license-MIT-yellow" alt="MIT License"/>
+</p>
+
 **AuraPHP** is a lightweight PHP MVC framework designed for rapid web application development. It ships with **OwnStrap**, a custom CSS/JS framework providing 300+ utility classes and 10+ interactive components — no external dependencies required.
 
 - **Size**: ~150KB total (framework + CSS + JS + fonts)
 - **PHP**: 7.4+
 - **License**: MIT
+
+---
+
+## Table of Contents
+
+- [Installation](#installation)
+- [Quick Start](#quick-start)
+- [The `aura` CLI Tool](#the-aura-cli-tool)
+- [Project Structure](#project-structure)
+- [Routing](#routing)
+- [Controllers](#controllers)
+- [Views](#views)
+- [Models](#models)
+- [Migrations](#migrations)
+- [Middleware](#middleware)
+- [Events & Listeners](#events--listeners)
+- [Form Requests & Validation](#form-requests--validation)
+- [Database](#database)
+- [OwnStrap CSS Framework](#ownstrap-css-framework)
+- [Accessibility](#accessibility)
+- [Server Configuration](#server-configuration)
+- [Configuration Reference](#configuration-reference)
+- [Environment File](#environment-file)
+- [License](#license)
 
 ---
 
@@ -104,15 +135,58 @@ AuraPHP includes a powerful command-line tool inspired by Laravel Artisan and Sp
 php aura list
 ```
 
+### Server & Dev
+
 | Command | Description |
 |---------|-------------|
 | `php aura serve` | Start the PHP development server |
-| `php aura route:list` | Display all registered routes |
+| `php aura serve --port=3000 --host=0.0.0.0` | Start on custom host/port |
+
+### Generators
+
+| Command | Description |
+|---------|-------------|
 | `php aura make:controller <name>` | Generate a controller |
-| `php aura make:controller <name> --resource` | Generate a resource controller |
+| `php aura make:controller <name> --resource` | Generate a resource controller (7 REST methods) |
 | `php aura make:model <name>` | Generate a model |
+| `php aura make:migration <name>` | Generate a migration |
+| `php aura make:seeder <name>` | Generate a database seeder |
 | `php aura make:view <name>` | Generate a view |
+| `php aura make:middleware <name>` | Generate middleware |
+| `php aura make:event <name>` | Generate an event class |
+| `php aura make:listener <name>` | Generate an event listener |
+| `php aura make:request <name>` | Generate a form request / validation class |
+| `php aura make:rule <name>` | Generate a custom validation rule |
+| `php aura make:scope <name>` | Generate a model global scope |
+| `php aura make:helper <name>` | Generate a helper file |
+| `php aura make:command <name>` | Generate a custom CLI command |
+| `php aura make:provider <name>` | Generate a service provider |
+
+All generators accept `--force` to overwrite existing files.
+
+### Database
+
+| Command | Description |
+|---------|-------------|
+| `php aura migrate` | Run all pending migrations |
+| `php aura migrate:rollback` | Rollback the last migration batch |
+| `php aura migrate:status` | Show migration status |
+| `php aura migrate:fresh` | Drop all tables and re-run all migrations |
+| `php aura migrate:reset` | Rollback all migrations |
+| `php aura migrate:refresh` | Rollback all and re-run all migrations |
+| `php aura db:seed` | Run all database seeders |
+| `php aura db:seed --class=UserSeeder` | Run a specific seeder |
+| `php aura db:wipe` | Drop all tables |
+
+### Utilities
+
+| Command | Description |
+|---------|-------------|
+| `php aura route:list` | Display all registered routes |
 | `php aura key:generate` | Generate an application encryption key |
+| `php aura about` | Show framework information and application stats |
+| `php aura inspire` | Show an inspiring quote |
+| `php aura list` | List all available commands |
 
 ### Examples
 
@@ -128,6 +202,15 @@ php aura make:model User
 
 # List all routes with methods and handlers
 php aura route:list
+
+# Run a specific seeder
+php aura db:seed --class=UserSeeder
+
+# Show framework info
+php aura about
+
+# See framework version
+php aura --version
 ```
 
 ---
@@ -424,6 +507,319 @@ $users = $userModel->getAll();
 
 ```bash
 php aura make:model User
+```
+
+---
+
+## Migrations
+
+Migrations are version-controlled database schema changes stored in `site/migrations/`.
+
+### Creating a migration
+
+```bash
+php aura make:migration create_users_table
+```
+
+This generates a timestamped file like `2025_01_15_120000_create_users_table.php`:
+
+```php
+<?php
+
+use AuraCore\Database;
+
+return new class
+{
+    public function up(Database $db)
+    {
+        $db->query("CREATE TABLE users (
+            id INT AUTO_INCREMENT PRIMARY KEY,
+            name VARCHAR(255) NOT NULL,
+            email VARCHAR(255) NOT NULL UNIQUE,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        )");
+    }
+
+    public function down(Database $db)
+    {
+        $db->query("DROP TABLE IF EXISTS users");
+    }
+};
+```
+
+### Running migrations
+
+```bash
+# Run pending migrations
+php aura migrate
+
+# Rollback the last batch
+php aura migrate:rollback
+
+# Rollback all migrations
+php aura migrate:reset
+
+# Drop all tables and re-run all migrations
+php aura migrate:fresh
+
+# Rollback all and re-run all migrations
+php aura migrate:refresh
+
+# Check which migrations have run
+php aura migrate:status
+```
+
+### Seeders
+
+Seeders populate your database with test or default data:
+
+```bash
+php aura make:seeder UserSeeder
+```
+
+```php
+<?php
+
+use AuraCore\Seeder;
+
+class UserSeeder extends Seeder
+{
+    public function run()
+    {
+        $this->db->insert('users', [
+            'name'  => 'Admin',
+            'email' => 'admin@example.com',
+        ]);
+    }
+}
+```
+
+```bash
+# Run all seeders
+php aura db:seed
+
+# Run a specific seeder
+php aura db:seed --class=UserSeeder
+
+# Drop all tables
+php aura db:wipe
+```
+
+---
+
+## Middleware
+
+Middleware sits between the request and your controller. Create it with:
+
+```bash
+php aura make:middleware Auth
+```
+
+Generated file (`site/middleware/auth.php`):
+
+```php
+<?php
+
+namespace SiteMiddleware;
+
+class Auth
+{
+    public function handle($request, $next)
+    {
+        // Check authentication
+        if (!isset($_SESSION['user_id'])) {
+            header('Location: /login');
+            exit;
+        }
+
+        return $next($request);
+    }
+}
+```
+
+Apply middleware to routes in `system/config/routes.php`:
+
+```php
+$router->get('dashboard', 'dashboard@index')->middleware('auth');
+```
+
+---
+
+## Events & Listeners
+
+AuraPHP includes a simple event system for decoupled application logic.
+
+### Creating an event
+
+```bash
+php aura make:event UserRegistered
+```
+
+```php
+<?php
+
+namespace SiteEvents;
+
+class UserRegistered
+{
+    public $user;
+
+    public function __construct($user)
+    {
+        $this->user = $user;
+    }
+}
+```
+
+### Creating a listener
+
+```bash
+php aura make:listener SendWelcomeEmail
+```
+
+```php
+<?php
+
+namespace SiteListeners;
+
+class SendWelcomeEmail
+{
+    public function handle($event)
+    {
+        // Send email to $event->user->email
+    }
+}
+```
+
+### Registering & dispatching
+
+```php
+// Register listener for event
+\AuraCore\Event::listen('UserRegistered', 'SiteListeners\SendWelcomeEmail');
+
+// Dispatch event
+$event = new \SiteEvents\UserRegistered($user);
+\AuraCore\Event::dispatch('UserRegistered', $event);
+```
+
+---
+
+## Form Requests & Validation
+
+Separate validation logic from your controllers with dedicated request classes.
+
+### Creating a request
+
+```bash
+php aura make:request StoreUserRequest
+```
+
+```php
+<?php
+
+namespace SiteRequests;
+
+use AuraCore\Validator;
+
+class StoreUserRequest
+{
+    protected $rules = [];
+    protected $messages = [];
+
+    public function rules()
+    {
+        return $this->rules;
+    }
+
+    public function messages()
+    {
+        return $this->messages;
+    }
+
+    public function validate(array $data)
+    {
+        $validator = new Validator();
+        return $validator->validate($data, $this->rules(), $this->messages());
+    }
+
+    public function authorize()
+    {
+        return true;
+    }
+}
+```
+
+### Custom validation rules
+
+```bash
+php aura make:rule Uppercase
+```
+
+```php
+<?php
+
+namespace SiteRules;
+
+class Uppercase
+{
+    public function validate($attribute, $value, $params, $data)
+    {
+        return strtoupper($value) === $value;
+    }
+
+    public function message($attribute, $params)
+    {
+        return "The {$attribute} field must be uppercase.";
+    }
+}
+```
+
+Usage in a request:
+
+```php
+protected $rules = [
+    'username' => 'required|min:3|max:50',
+    'email'    => 'required|email',
+    'role'     => 'uppercase', // custom rule
+];
+```
+
+---
+
+## Model Scopes
+
+Global scopes allow you to automatically add constraints to all queries for a model.
+
+```bash
+php aura make:scope Active
+```
+
+```php
+<?php
+
+namespace SiteScopes;
+
+use AuraCore\Model;
+
+class Active
+{
+    public function apply(Model $model, $query)
+    {
+        return $query->where('active', 1);
+    }
+}
+```
+
+Attach the scope in your model's `boot()` method:
+
+```php
+class User extends Model
+{
+    protected function boot()
+    {
+        $this->addGlobalScope(new SiteScopes\Active());
+    }
+}
 ```
 
 ---

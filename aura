@@ -1,65 +1,166 @@
 #!/usr/bin/env php
 <?php
-/**
- * AuraPHP CLI Tool
- * 
- * Usage: php aura <command> [options]
- * 
- * Inspired by Laravel Artisan and Spiral Spark.
- * Run 'php aura list' to see available commands.
- */
 
-// -------------------------------------------------------
-// Bootstrap
-// -------------------------------------------------------
 define('AURA_ROOT', __DIR__);
 define('AURA_SYSTEM', AURA_ROOT . '/system');
 define('AURA_SITE', AURA_ROOT . '/site');
 
-$version = '1.0.0';
+$version = '1.2.0';
 
-// -------------------------------------------------------
-// Command registry
-// -------------------------------------------------------
 $commands = [
     'serve' => [
         'description' => 'Start the PHP development server',
         'usage' => 'serve [--port=8080] [--host=127.0.0.1]',
+        'category' => 'server',
     ],
     'make:controller' => [
         'description' => 'Create a new controller',
-        'usage' => 'make:controller <name> [--resource]',
+        'usage' => 'make:controller <name> [--resource] [--force]',
+        'category' => 'make',
     ],
     'make:model' => [
         'description' => 'Create a new model',
-        'usage' => 'make:model <name>',
+        'usage' => 'make:model <name> [--force]',
+        'category' => 'make',
+    ],
+    'make:migration' => [
+        'description' => 'Create a new migration',
+        'usage' => 'make:migration <name> [--force]',
+        'category' => 'make',
+    ],
+    'make:seeder' => [
+        'description' => 'Create a new database seeder',
+        'usage' => 'make:seeder <name> [--force]',
+        'category' => 'make',
     ],
     'make:view' => [
         'description' => 'Create a new view',
-        'usage' => 'make:view <name>',
+        'usage' => 'make:view <name> [--force]',
+        'category' => 'make',
+    ],
+    'make:middleware' => [
+        'description' => 'Create a new middleware',
+        'usage' => 'make:middleware <name> [--force]',
+        'category' => 'make',
+    ],
+    'make:event' => [
+        'description' => 'Create a new event class',
+        'usage' => 'make:event <name> [--force]',
+        'category' => 'make',
+    ],
+    'make:listener' => [
+        'description' => 'Create a new event listener',
+        'usage' => 'make:listener <name> [--force]',
+        'category' => 'make',
+    ],
+    'make:request' => [
+        'description' => 'Create a new form request/validation class',
+        'usage' => 'make:request <name> [--force]',
+        'category' => 'make',
+    ],
+    'migrate' => [
+        'description' => 'Run all pending migrations',
+        'usage' => 'migrate',
+        'category' => 'db',
+    ],
+    'migrate:rollback' => [
+        'description' => 'Rollback the last migration batch',
+        'usage' => 'migrate:rollback',
+        'category' => 'db',
+    ],
+    'migrate:status' => [
+        'description' => 'Show migration status',
+        'usage' => 'migrate:status',
+        'category' => 'db',
+    ],
+    'migrate:fresh' => [
+        'description' => 'Drop all tables and re-run all migrations',
+        'usage' => 'migrate:fresh',
+        'category' => 'db',
+    ],
+    'migrate:reset' => [
+        'description' => 'Rollback all migrations',
+        'usage' => 'migrate:reset',
+        'category' => 'db',
+    ],
+    'migrate:refresh' => [
+        'description' => 'Rollback all and re-run all migrations',
+        'usage' => 'migrate:refresh',
+        'category' => 'db',
+    ],
+    'db:seed' => [
+        'description' => 'Run all database seeders',
+        'usage' => 'db:seed',
+        'category' => 'db',
+    ],
+    'db:wipe' => [
+        'description' => 'Drop all tables',
+        'usage' => 'db:wipe',
+        'category' => 'db',
     ],
     'route:list' => [
         'description' => 'Display all registered routes',
         'usage' => 'route:list',
+        'category' => 'util',
     ],
     'key:generate' => [
         'description' => 'Generate an application encryption key',
         'usage' => 'key:generate',
+        'category' => 'util',
     ],
     'list' => [
         'description' => 'List all available commands',
         'usage' => 'list',
+        'category' => 'util',
+    ],
+    'about' => [
+        'description' => 'Show framework information and stats',
+        'usage' => 'about',
+        'category' => 'util',
+    ],
+    'inspire' => [
+        'description' => 'Show an inspiring quote',
+        'usage' => 'inspire',
+        'category' => 'util',
+    ],
+    'make:rule' => [
+        'description' => 'Create a custom validation rule',
+        'usage' => 'make:rule <name> [--force]',
+        'category' => 'make',
+    ],
+    'make:scope' => [
+        'description' => 'Create a model global scope',
+        'usage' => 'make:scope <name> [--force]',
+        'category' => 'make',
+    ],
+    'make:helper' => [
+        'description' => 'Create a helper file',
+        'usage' => 'make:helper <name> [--force]',
+        'category' => 'make',
+    ],
+    'make:command' => [
+        'description' => 'Create a custom CLI command',
+        'usage' => 'make:command <name> [--force]',
+        'category' => 'make',
+    ],
+    'make:provider' => [
+        'description' => 'Create a service provider',
+        'usage' => 'make:provider <name> [--force]',
+        'category' => 'make',
     ],
 ];
 
-// -------------------------------------------------------
-// Parse arguments
-// -------------------------------------------------------
+$categories = [
+    'server' => 'Server & Dev',
+    'make'   => 'Generators',
+    'db'     => 'Database',
+    'util'   => 'Utilities',
+];
+
 $args = array_slice($argv, 1);
 $command = $args[0] ?? 'list';
 $commandArgs = array_slice($args, 1);
 
-// Parse named options from commandArgs
 $options = [];
 $params = [];
 foreach ($commandArgs as $arg) {
@@ -71,20 +172,17 @@ foreach ($commandArgs as $arg) {
     }
 }
 
-// -------------------------------------------------------
-// Helpers
-// -------------------------------------------------------
 function write($text, $color = null) {
     $colors = [
-        'green' => "\033[32m",
-        'red' => "\033[31m",
-        'yellow' => "\033[33m",
-        'blue' => "\033[34m",
-        'cyan' => "\033[36m",
+        'green'   => "\033[32m",
+        'red'     => "\033[31m",
+        'yellow'  => "\033[33m",
+        'blue'    => "\033[34m",
+        'cyan'    => "\033[36m",
         'magenta' => "\033[35m",
-        'gray' => "\033[90m",
-        'reset' => "\033[0m",
-        'bold' => "\033[1m",
+        'gray'    => "\033[90m",
+        'reset'   => "\033[0m",
+        'bold'    => "\033[1m",
     ];
     $c = $colors[$color] ?? $colors['reset'];
     $r = $colors['reset'];
@@ -99,6 +197,16 @@ function success($text) { writeln($text, 'green'); }
 function error($text) { writeln($text, 'red'); }
 function info($text) { writeln($text, 'cyan'); }
 function warn($text) { writeln($text, 'yellow'); }
+
+function done() { write('  DONE', 'green'); writeln(); }
+
+function confirm($question) {
+    write($question . ' (yes/no) ', 'yellow');
+    $handle = fopen('php://stdin', 'r');
+    $answer = strtolower(trim(fgets($handle)));
+    fclose($handle);
+    return $answer === 'yes' || $answer === 'y';
+}
 
 function studlyCase($name) {
     return str_replace(' ', '', ucwords(str_replace(['-', '_'], ' ', $name)));
@@ -123,77 +231,81 @@ function pluralize($name) {
     return $name . 's';
 }
 
+function db_bootstrap() {
+    require_once AURA_SYSTEM . '/core/base.php';
+    require_once AURA_SYSTEM . '/core/database.php';
+    require_once AURA_SYSTEM . '/core/query-builder.php';
+    require_once AURA_SYSTEM . '/core/schema.php';
+    return new AuraCore\Database();
+}
+
+function migration_class($filename) {
+    $name = preg_replace('/^\d{4}_\d{2}_\d{2}_\d{6}_/', '', $filename);
+    $name = preg_replace('/\.php$/', '', $name);
+    $class = 'Migration_' . studlyCase($name);
+    return str_replace('-', '_', $class);
+}
+
+function ensure_dir($dir) {
+    if (!is_dir($dir)) {
+        mkdir($dir, 0755, true);
+    }
+}
+
 // -------------------------------------------------------
-// Command: list
+// Commands
 // -------------------------------------------------------
-function cmd_list($commands, $version) {
+
+function cmd_list($commands, $categories, $version) {
     writeln();
     write(" AuraPHP CLI ", 'cyan');
     writeln(" v{$version}", 'gray');
-    writeln(str_repeat('─', 50), 'gray');
+    writeln(str_repeat('─', 54), 'gray');
     writeln();
 
-    $maxLen = max(array_map('strlen', array_keys($commands)));
-
+    $grouped = [];
     foreach ($commands as $cmd => $meta) {
-        write('  ');
-        write(str_pad($cmd, $maxLen + 2), 'green');
-        write($meta['description'], 'gray');
+        $cat = $meta['category'] ?? 'util';
+        $grouped[$cat][] = ['name' => $cmd, 'desc' => $meta['description']];
+    }
+
+    foreach ($categories as $key => $label) {
+        if (empty($grouped[$key])) continue;
+        write(" {$label}", 'bold');
+        writeln();
+        $maxLen = max(array_map(function($c) { return strlen($c['name']); }, $grouped[$key]));
+        foreach ($grouped[$key] as $cmd) {
+            write('  ');
+            write(str_pad($cmd['name'], $maxLen + 2), 'green');
+            write($cmd['desc'], 'gray');
+            writeln();
+        }
         writeln();
     }
-    writeln();
+
     writeln(' Run "php aura <command> --help" for more information.', 'gray');
     writeln();
 }
 
-// -------------------------------------------------------
-// Command: route:list
-// -------------------------------------------------------
-function cmd_route_list() {
-    $routesFile = AURA_SYSTEM . '/config/routes.php';
-
-    if (!file_exists($routesFile)) {
-        error('Routes file not found at system/config/routes.php');
+function cmd_help($commands, $categories, $cmd) {
+    if (!isset($commands[$cmd])) {
+        error("Unknown command: {$cmd}");
         return;
     }
-
-    // Bootstrap the router to extract routes
-    if (!class_exists('AuraCore\\Router')) {
-        require_once AURA_SYSTEM . '/core/router.php';
-    }
-
-    // Capture routes by loading routes config
-    $_SERVER['REQUEST_URI'] = '/aura-route-list';
-    $router = require $routesFile;
-    $routes = $router->getRoutes();
-
-    if (empty($routes)) {
-        warn('No routes registered.');
-        return;
-    }
-
+    $meta = $commands[$cmd];
+    $cat = $categories[$meta['category']] ?? $meta['category'];
     writeln();
-    write(str_pad('Method', 8), 'bold');
-    write(str_pad('Path', 40), 'bold');
-    write('Handler', 'bold');
+    write(" {$cmd}", 'green');
+    writeln("  -  {$meta['description']}", 'gray');
+    writeln(str_repeat('─', 54), 'gray');
     writeln();
-    writeln(str_repeat('─', 80), 'gray');
-
-    foreach ($routes as $route) {
-        $method = $route['method'];
-        $colorMap = ['GET' => 'green', 'POST' => 'yellow', 'PUT' => 'blue', 'DELETE' => 'red'];
-        $color = $colorMap[$method] ?? 'gray';
-
-        write(str_pad($route['method'], 8), $color);
-        write(str_pad('/' . $route['path'], 40));
-        writeln($route['handler']);
-    }
+    write('  Category: ', 'gray');
+    writeln($cat);
+    write('  Usage:   ', 'gray');
+    writeln("php aura {$meta['usage']}");
     writeln();
 }
 
-// -------------------------------------------------------
-// Command: serve
-// -------------------------------------------------------
 function cmd_serve($options) {
     $host = $options['host'] ?? '127.0.0.1';
     $port = $options['port'] ?? '8080';
@@ -205,16 +317,16 @@ function cmd_serve($options) {
     }
 
     writeln();
-    info(" AuraPHP development server starting...");
+    info(' AuraPHP development server starting...');
     writeln();
-    write("   Host: ", 'gray');
+    write('   Host: ', 'gray');
     writeln($host, 'cyan');
-    write("   Port: ", 'gray');
+    write('   Port: ', 'gray');
     writeln($port, 'cyan');
-    write("   Root: ", 'gray');
+    write('   Root: ', 'gray');
     writeln($docRoot, 'cyan');
     writeln();
-    writeln(" Press Ctrl+C to stop the server.", 'gray');
+    writeln(' Press Ctrl+C to stop the server.', 'gray');
     writeln();
 
     $cmd = sprintf(
@@ -223,23 +335,20 @@ function cmd_serve($options) {
         (int)$port,
         escapeshellarg($docRoot)
     );
-
     passthru($cmd);
 }
 
-// -------------------------------------------------------
-// Command: make:controller
-// -------------------------------------------------------
 function cmd_make_controller($params, $options) {
     $name = $params[0] ?? null;
     if (!$name) {
-        error('Usage: php aura make:controller <name> [--resource]');
-        return;
+        error('Usage: php aura make:controller <name> [--resource] [--force]');
+        return 1;
     }
 
     if (isset($options['help'])) {
-        info('Usage: php aura make:controller <name> [--resource]');
+        info('Usage: php aura make:controller <name> [--resource] [--force]');
         info('  --resource  Generate resource methods (index, create, store, show, edit, update, destroy)');
+        info('  --force     Overwrite existing file');
         return;
     }
 
@@ -247,9 +356,9 @@ function cmd_make_controller($params, $options) {
     $fileName = kebabCase($name) . '.php';
     $filePath = AURA_SITE . '/controllers/' . $fileName;
 
-    if (file_exists($filePath)) {
-        error("Controller {$fileName} already exists!");
-        return;
+    if (file_exists($filePath) && !isset($options['force'])) {
+        error("Controller {$fileName} already exists! Use --force to overwrite.");
+        return 1;
     }
 
     if (isset($options['resource'])) {
@@ -280,7 +389,6 @@ class {$className} extends Controller
 
     public function store()
     {
-        // Handle POST request
         redirect(site_url('{$name}'));
     }
 
@@ -304,13 +412,11 @@ class {$className} extends Controller
 
     public function update(\$id)
     {
-        // Handle PUT request
         redirect(site_url('{$name}'));
     }
 
     public function destroy(\$id)
     {
-        // Handle DELETE request
         redirect(site_url('{$name}'));
     }
 }
@@ -342,31 +448,30 @@ PHP;
     success("Controller created: site/controllers/{$fileName}");
 }
 
-// -------------------------------------------------------
-// Command: make:model
-// -------------------------------------------------------
 function cmd_make_model($params, $options) {
     $name = $params[0] ?? null;
     if (!$name) {
-        error('Usage: php aura make:model <name>');
-        return;
+        error('Usage: php aura make:model <name> [--force]');
+        return 1;
     }
 
     if (isset($options['help'])) {
-        info('Usage: php aura make:model <name>');
-        info('Creates a model with base CRUD methods.');
+        info('Usage: php aura make:model <name> [--force]');
+        info('  --force  Overwrite existing file');
         return;
     }
 
-    $className = studlyCase($name) . '_Model';
+    $className = studlyCase($name);
     $tableName = strtolower(pluralize(kebabCase($name)));
-    $fileName = kebabCase($name) . '_model.php';
+    $fileName = kebabCase($name) . '.php';
     $filePath = AURA_SITE . '/models/' . $fileName;
 
-    if (file_exists($filePath)) {
-        error("Model {$fileName} already exists!");
-        return;
+    if (file_exists($filePath) && !isset($options['force'])) {
+        error("Model {$fileName} already exists! Use --force to overwrite.");
+        return 1;
     }
+
+    $timestamps = isset($options['no-timestamps']) ? 'false' : 'true';
 
     $content = <<<PHP
 <?php
@@ -375,37 +480,8 @@ use AuraCore\\Model;
 
 class {$className} extends Model
 {
-    private \$table = '{$tableName}';
-
-    public function getAll()
-    {
-        \$db = \$this->loadDatabase();
-        return \$db->get(\$this->table);
-    }
-
-    public function getById(\$id)
-    {
-        \$db = \$this->loadDatabase();
-        return \$db->getWhere(\$this->table, ['id' => \$id]);
-    }
-
-    public function create(\$data)
-    {
-        \$db = \$this->loadDatabase();
-        return \$db->insert(\$this->table, \$data);
-    }
-
-    public function update(\$id, \$data)
-    {
-        \$db = \$this->loadDatabase();
-        return \$db->update(\$this->table, \$data, ['id' => \$id]);
-    }
-
-    public function delete(\$id)
-    {
-        \$db = \$this->loadDatabase();
-        return \$db->delete(\$this->table, ['id' => \$id]);
-    }
+    protected \$table = '{$tableName}';
+    public \$timestamps = {$timestamps};
 }
 
 PHP;
@@ -414,28 +490,564 @@ PHP;
     success("Model created: site/models/{$fileName}");
 }
 
-// -------------------------------------------------------
-// Command: make:view
-// -------------------------------------------------------
-function cmd_make_view($params, $options) {
+function cmd_make_migration($params, $options) {
     $name = $params[0] ?? null;
     if (!$name) {
-        error('Usage: php aura make:view <name>');
-        return;
+        error('Usage: php aura make:migration <name> [--force]');
+        info('  Examples: create_users_table, add_email_to_users, create_orders_table');
+        return 1;
     }
 
     if (isset($options['help'])) {
-        info('Usage: php aura make:view <name>');
-        info('Creates a view file with the template structure.');
+        info('Usage: php aura make:migration <name> [--force]');
+        info('  --force  Overwrite existing file');
+        info('  Examples:');
+        info('    php aura make:migration create_users_table');
+        info('    php aura make:migration add_email_to_users');
+        return;
+    }
+
+    $dir = AURA_SITE . '/migrations';
+    ensure_dir($dir);
+
+    $timestamp = date('Y_m_d_His');
+    $className = 'Migration_' . studlyCase($name);
+    $fileName = "{$timestamp}_{$name}.php";
+    $filePath = "{$dir}/{$fileName}";
+
+    if (file_exists($filePath) && !isset($options['force'])) {
+        error("Migration {$fileName} already exists! Use --force to overwrite.");
+        return 1;
+    }
+
+    $upTable = "        // Schema::create('table_name', function (\$table) {\n";
+    $upTable .= "        //     \$table->increments('id');\n";
+    $upTable .= "        //     \$table->timestamps();\n";
+    $upTable .= "        // });";
+    $downTable = "        // Schema::drop('table_name');";
+
+    if (preg_match('/^create_(\w+)_table$/', $name, $m)) {
+        $table = $m[1];
+        $upTable = "        Schema::create('{$table}', function (\$table) {\n";
+        $upTable .= "            \$table->increments('id');\n";
+        $upTable .= "            \$table->timestamps();\n";
+        $upTable .= "        });";
+        $downTable = "        Schema::drop('{$table}');";
+    } elseif (preg_match('/^add_.*_to_(\w+)_table$/', $name, $m)) {
+        $table = $m[1];
+        $upTable = "        Schema::table('{$table}', function (\$table) {\n";
+        $upTable .= "            // \$table->string('column_name')->nullable();\n";
+        $upTable .= "        });";
+        $downTable = "        Schema::table('{$table}', function (\$table) {\n";
+        $downTable .= "            // \$table->dropColumn('column_name');\n";
+        $downTable .= "        });";
+    } elseif (preg_match('/^drop_(\w+)_table$/', $name, $m)) {
+        $table = $m[1];
+        $upTable = "        Schema::drop('{$table}');";
+        $downTable = "        Schema::create('{$table}', function (\$table) {\n";
+        $downTable .= "            // \$table->increments('id');\n";
+        $downTable .= "            // \$table->timestamps();\n";
+        $downTable .= "        });";
+    }
+
+    $content = <<<PHP
+<?php
+
+use AuraCore\\Schema;
+use AuraCore\\Migration;
+
+class {$className} extends Migration
+{
+    public function up()
+    {
+{$upTable}
+    }
+
+    public function down()
+    {
+{$downTable}
+    }
+}
+
+PHP;
+
+    file_put_contents($filePath, $content);
+    success("Migration created: site/migrations/{$fileName}");
+}
+
+function cmd_migrate() {
+    $dir = AURA_SITE . '/migrations';
+    if (!is_dir($dir)) {
+        error('No migrations directory found. Create one with: php aura make:migration <name>');
+        return 1;
+    }
+
+    $db = db_bootstrap();
+    $pdo = $db->getPdo();
+
+    $pdo->exec("CREATE TABLE IF NOT EXISTS migrations (
+        id INT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+        migration VARCHAR(255) NOT NULL,
+        batch INT UNSIGNED NOT NULL,
+        executed_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+    )");
+
+    $stmt = $pdo->query("SELECT MAX(batch) FROM migrations");
+    $currentBatch = (int) $stmt->fetchColumn();
+    $newBatch = $currentBatch + 1;
+
+    $stmt = $pdo->query("SELECT migration FROM migrations");
+    $ran = $stmt->fetchAll(\PDO::FETCH_COLUMN);
+
+    $files = glob("{$dir}/*.php");
+    sort($files);
+
+    $pending = [];
+    foreach ($files as $file) {
+        $filename = basename($file);
+        if (!in_array($filename, $ran)) {
+            $pending[] = $file;
+        }
+    }
+
+    if (empty($pending)) {
+        info('Nothing to migrate.');
+        return;
+    }
+
+    $migrated = 0;
+    foreach ($pending as $file) {
+        $filename = basename($file);
+        require_once $file;
+
+        $class = migration_class($filename);
+        if (!class_exists($class)) {
+            warn("Could not find class for migration: {$filename}");
+            continue;
+        }
+
+        write("  {$filename} ... ", 'gray');
+        try {
+            $migration = new $class();
+            $migration->up();
+
+            $stmt = $pdo->prepare("INSERT INTO migrations (migration, batch) VALUES (?, ?)");
+            $stmt->execute([$filename, $newBatch]);
+
+            done();
+            $migrated++;
+        } catch (\Exception $e) {
+            error('  FAILED');
+            error("  {$e->getMessage()}");
+            return 1;
+        }
+    }
+
+    writeln();
+    success("Migrated: {$migrated} migration(s)");
+}
+
+function cmd_migrate_rollback() {
+    $dir = AURA_SITE . '/migrations';
+    if (!is_dir($dir)) {
+        error('No migrations directory found.');
+        return 1;
+    }
+
+    $db = db_bootstrap();
+    $pdo = $db->getPdo();
+
+    try {
+        $pdo->query("SELECT 1 FROM migrations LIMIT 1");
+    } catch (\Exception $e) {
+        warn('No migrations table found. Nothing to rollback.');
+        return;
+    }
+
+    $stmt = $pdo->query("SELECT MAX(batch) FROM migrations");
+    $lastBatch = (int) $stmt->fetchColumn();
+
+    if ($lastBatch === 0) {
+        info('Nothing to rollback.');
+        return;
+    }
+
+    $stmt = $pdo->prepare("SELECT migration FROM migrations WHERE batch = ? ORDER BY id DESC");
+    $stmt->execute([$lastBatch]);
+    $toRollback = $stmt->fetchAll(\PDO::FETCH_COLUMN);
+
+    if (empty($toRollback)) {
+        info('Nothing to rollback.');
+        return;
+    }
+
+    $rolledBack = 0;
+    foreach ($toRollback as $filename) {
+        $file = "{$dir}/{$filename}";
+        if (!file_exists($file)) {
+            warn("Migration file not found: {$filename}");
+            continue;
+        }
+
+        require_once $file;
+        $class = migration_class($filename);
+
+        if (!class_exists($class)) {
+            warn("Could not find class for migration: {$filename}");
+            continue;
+        }
+
+        write("  {$filename} ... ", 'gray');
+        try {
+            $migration = new $class();
+            $migration->down();
+
+            $stmt = $pdo->prepare("DELETE FROM migrations WHERE migration = ? AND batch = ?");
+            $stmt->execute([$filename, $lastBatch]);
+
+            done();
+            $rolledBack++;
+        } catch (\Exception $e) {
+            error('  FAILED');
+            error("  {$e->getMessage()}");
+            return 1;
+        }
+    }
+
+    writeln();
+    success("Rolled back: {$rolledBack} migration(s)");
+}
+
+function cmd_migrate_status() {
+    $dir = AURA_SITE . '/migrations';
+    if (!is_dir($dir)) {
+        error('No migrations directory found.');
+        return 1;
+    }
+
+    $db = db_bootstrap();
+    $pdo = $db->getPdo();
+
+    try {
+        $pdo->query("SELECT 1 FROM migrations LIMIT 1");
+    } catch (\Exception $e) {
+        $pdo->exec("CREATE TABLE IF NOT EXISTS migrations (
+            id INT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+            migration VARCHAR(255) NOT NULL,
+            batch INT UNSIGNED NOT NULL,
+            executed_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        )");
+    }
+
+    $stmt = $pdo->query("SELECT migration, batch, executed_at FROM migrations ORDER BY id");
+    $ran = [];
+    while ($row = $stmt->fetch(\PDO::FETCH_ASSOC)) {
+        $ran[$row['migration']] = $row;
+    }
+
+    $files = glob("{$dir}/*.php");
+    sort($files);
+
+    writeln();
+    write(str_pad(' Status', 10), 'bold');
+    write(str_pad('Migration', 55), 'bold');
+    write(str_pad('Batch', 8), 'bold');
+    write('Executed', 'bold');
+    writeln();
+    writeln(str_repeat('─', 90), 'gray');
+
+    $pending = 0;
+    foreach ($files as $file) {
+        $filename = basename($file);
+        if (isset($ran[$filename])) {
+            write(str_pad(' Ran', 10), 'green');
+            write(str_pad($filename, 55));
+            write(str_pad($ran[$filename]['batch'], 8));
+            writeln($ran[$filename]['executed']);
+        } else {
+            write(str_pad(' Pending', 10), 'yellow');
+            write(str_pad($filename, 55));
+            write(str_pad('--', 8));
+            writeln('--');
+            $pending++;
+        }
+    }
+    writeln();
+    success(count($ran) . ' ran, ' . $pending . ' pending');
+}
+
+function cmd_migrate_fresh() {
+    if (!confirm(' WARNING: This will drop ALL tables and re-run all migrations. Continue?')) {
+        info('Cancelled.');
+        return;
+    }
+
+    $db = db_bootstrap();
+    $pdo = $db->getPdo();
+
+    $pdo->query("SET FOREIGN_KEY_CHECKS = 0");
+
+    $stmt = $pdo->query("SHOW TABLES");
+    $tables = $stmt->fetchAll(\PDO::FETCH_COLUMN);
+
+    foreach ($tables as $table) {
+        write("  Dropping {$table} ... ", 'gray');
+        $pdo->exec("DROP TABLE IF EXISTS `{$table}`");
+        done();
+    }
+
+    $pdo->query("SET FOREIGN_KEY_CHECKS = 1");
+    writeln();
+    success('All tables dropped.');
+    writeln();
+
+    cmd_migrate();
+}
+
+function cmd_migrate_reset() {
+    if (!confirm(' WARNING: This will rollback ALL migrations. Continue?')) {
+        info('Cancelled.');
+        return;
+    }
+
+    $dir = AURA_SITE . '/migrations';
+    if (!is_dir($dir)) {
+        error('No migrations directory found.');
+        return 1;
+    }
+
+    $db = db_bootstrap();
+    $pdo = $db->getPdo();
+
+    try {
+        $pdo->query("SELECT 1 FROM migrations LIMIT 1");
+    } catch (\Exception $e) {
+        info('Nothing to rollback.');
+        return;
+    }
+
+    $stmt = $pdo->query("SELECT MAX(batch) FROM migrations");
+    $maxBatch = (int) $stmt->fetchColumn();
+
+    if ($maxBatch === 0) {
+        info('Nothing to rollback.');
+        return;
+    }
+
+    // Rollback from highest batch to 1
+    for ($batch = $maxBatch; $batch >= 1; $batch--) {
+        $stmt = $pdo->prepare("SELECT migration FROM migrations WHERE batch = ? ORDER BY id DESC");
+        $stmt->execute([$batch]);
+        $toRollback = $stmt->fetchAll(\PDO::FETCH_COLUMN);
+
+        foreach ($toRollback as $filename) {
+            $file = "{$dir}/{$filename}";
+            if (!file_exists($file)) {
+                warn("Migration file not found: {$filename}");
+                continue;
+            }
+
+            require_once $file;
+            $class = migration_class($filename);
+
+            if (!class_exists($class)) {
+                warn("Could not find class for migration: {$filename}");
+                continue;
+            }
+
+            write("  {$filename} ... ", 'gray');
+            try {
+                $migration = new $class();
+                $migration->down();
+                $stmt = $pdo->prepare("DELETE FROM migrations WHERE migration = ? AND batch = ?");
+                $stmt->execute([$filename, $batch]);
+                done();
+            } catch (\Exception $e) {
+                error('  FAILED');
+                error("  {$e->getMessage()}");
+                return 1;
+            }
+        }
+    }
+
+    writeln();
+    success('All migrations have been rolled back.');
+}
+
+function cmd_migrate_refresh() {
+    cmd_migrate_reset();
+    writeln();
+    cmd_migrate();
+}
+
+function cmd_make_seeder($params, $options) {
+    $name = $params[0] ?? null;
+    if (!$name) {
+        error('Usage: php aura make:seeder <name> [--force]');
+        return 1;
+    }
+
+    if (isset($options['help'])) {
+        info('Usage: php aura make:seeder <name> [--force]');
+        info('  --force  Overwrite existing file');
+        return;
+    }
+
+    $dir = AURA_SITE . '/seeders';
+    ensure_dir($dir);
+
+    $className = studlyCase($name) . 'Seeder';
+    $fileName = kebabCase($name) . '_seeder.php';
+    $filePath = "{$dir}/{$fileName}";
+
+    if (file_exists($filePath) && !isset($options['force'])) {
+        error("Seeder {$fileName} already exists! Use --force to overwrite.");
+        return 1;
+    }
+
+    $tableName = strtolower(pluralize(kebabCase($name)));
+
+    $content = <<<PHP
+<?php
+
+use AuraCore\\Seeder;
+
+class {$className} extends Seeder
+{
+    public function run()
+    {
+        \$this->db->table('{$tableName}')->insert([
+            ['column' => 'value1'],
+            ['column' => 'value2'],
+        ]);
+    }
+}
+
+PHP;
+
+    file_put_contents($filePath, $content);
+    success("Seeder created: site/seeders/{$fileName}");
+}
+
+function cmd_db_seed($options = []) {
+    $dir = AURA_SITE . '/seeders';
+    if (!is_dir($dir)) {
+        error('No seeders directory found. Create one with: php aura make:seeder <name>');
+        return 1;
+    }
+
+    require_once AURA_SYSTEM . '/core/base.php';
+    require_once AURA_SYSTEM . '/core/database.php';
+    require_once AURA_SYSTEM . '/core/query-builder.php';
+    require_once AURA_SYSTEM . '/core/seeder.php';
+
+    $files = glob("{$dir}/*.php");
+    sort($files);
+
+    if (empty($files)) {
+        warn('No seeders found.');
+        return;
+    }
+
+    // Filter by --class option
+    if (isset($options['class'])) {
+        $target = kebabCase($options['class']);
+        $files = array_filter($files, function ($f) use ($target) {
+            return str_contains(basename($f), $target);
+        });
+        $files = array_values($files);
+
+        if (empty($files)) {
+            error("No seeder found matching: {$options['class']}");
+            return 1;
+        }
+    }
+
+    $db = new AuraCore\Database();
+    $seeded = 0;
+
+    foreach ($files as $file) {
+        $filename = basename($file);
+        require_once $file;
+
+        $base = preg_replace('/_seeder\.php$/', '', $filename);
+        $base = preg_replace('/\.php$/', '', $base);
+        $className = studlyCase($base) . 'Seeder';
+        $className = str_replace('-', '_', $className);
+
+        if (!class_exists($className)) {
+            warn("Could not find class for seeder: {$filename}");
+            continue;
+        }
+
+        write("  {$filename} ... ", 'gray');
+        try {
+            $seeder = new $className();
+            $seeder->setDb($db);
+            $seeder->run();
+            done();
+            $seeded++;
+        } catch (\Exception $e) {
+            error('  FAILED');
+            error("  {$e->getMessage()}");
+            return 1;
+        }
+    }
+
+    writeln();
+    success("Seeded: {$seeded} seeder(s)");
+}
+
+function cmd_db_wipe() {
+    if (!confirm(' WARNING: This will drop ALL tables. Continue?')) {
+        info('Cancelled.');
+        return;
+    }
+
+    $db = db_bootstrap();
+    $pdo = $db->getPdo();
+
+    $pdo->query("SET FOREIGN_KEY_CHECKS = 0");
+
+    $stmt = $pdo->query("SHOW TABLES");
+    $tables = $stmt->fetchAll(\PDO::FETCH_COLUMN);
+
+    if (empty($tables)) {
+        info('No tables found.');
+        $pdo->query("SET FOREIGN_KEY_CHECKS = 1");
+        return;
+    }
+
+    foreach ($tables as $table) {
+        write("  Dropping {$table} ... ", 'gray');
+        $pdo->exec("DROP TABLE IF EXISTS `{$table}`");
+        done();
+    }
+
+    $pdo->query("SET FOREIGN_KEY_CHECKS = 1");
+    writeln();
+    success('All tables dropped.');
+}
+
+function cmd_make_view($params, $options) {
+    $name = $params[0] ?? null;
+    if (!$name) {
+        error('Usage: php aura make:view <name> [--force]');
+        return 1;
+    }
+
+    if (isset($options['help'])) {
+        info('Usage: php aura make:view <name> [--force]');
+        info('  --force  Overwrite existing file');
         return;
     }
 
     $fileName = kebabCase($name) . '.php';
     $filePath = AURA_SITE . '/views/' . $fileName;
 
-    if (file_exists($filePath)) {
-        error("View {$fileName} already exists!");
-        return;
+    if (file_exists($filePath) && !isset($options['force'])) {
+        error("View {$fileName} already exists! Use --force to overwrite.");
+        return 1;
     }
 
     $content = <<<PHP
@@ -449,13 +1061,105 @@ PHP;
     success("View created: site/views/{$fileName}");
 }
 
-// -------------------------------------------------------
-// Command: key:generate
-// -------------------------------------------------------
+function cmd_make_middleware($params, $options) {
+    $name = $params[0] ?? null;
+    if (!$name) {
+        error('Usage: php aura make:middleware <name> [--force]');
+        return 1;
+    }
+
+    if (isset($options['help'])) {
+        info('Usage: php aura make:middleware <name> [--force]');
+        info('  --force  Overwrite existing file');
+        return;
+    }
+
+    $dir = AURA_SITE . '/middleware';
+    ensure_dir($dir);
+
+    $className = studlyCase($name);
+    $fileName = kebabCase($name) . '.php';
+    $filePath = "{$dir}/{$fileName}";
+
+    if (file_exists($filePath) && !isset($options['force'])) {
+        error("Middleware {$fileName} already exists! Use --force to overwrite.");
+        return 1;
+    }
+
+    $content = <<<PHP
+<?php
+
+namespace SiteMiddleware;
+
+class {$className}
+{
+    public function handle(\$request, \$next)
+    {
+        // Code to run before the request is handled
+        // \$response = \$next(\$request);
+        // Code to run after the request is handled
+        // return \$response;
+
+        return \$next(\$request);
+    }
+}
+
+PHP;
+
+    file_put_contents($filePath, $content);
+    success("Middleware created: site/middleware/{$fileName}");
+}
+
+function cmd_route_list() {
+    $routesFile = AURA_SYSTEM . '/config/routes.php';
+
+    if (!file_exists($routesFile)) {
+        error('Routes file not found at system/config/routes.php');
+        return 1;
+    }
+
+    if (!class_exists('AuraCore\\Router')) {
+        require_once AURA_SYSTEM . '/core/router.php';
+    }
+
+    $_SERVER['REQUEST_URI'] = '/aura-route-list';
+    $router = require $routesFile;
+    $routes = $router->getRoutes();
+
+    if (empty($routes)) {
+        warn('No routes registered.');
+        return;
+    }
+
+    writeln();
+    write(str_pad('Method', 8), 'bold');
+    write(str_pad('Path', 45), 'bold');
+    write('Handler', 'bold');
+    writeln();
+    writeln(str_repeat('─', 85), 'gray');
+
+    if (empty($routes)) {
+        warn('  No routes registered.');
+        writeln();
+        return;
+    }
+
+    foreach ($routes as $route) {
+        $method = $route['method'];
+        $colorMap = ['GET' => 'green', 'POST' => 'yellow', 'PUT' => 'blue', 'DELETE' => 'red'];
+        $color = $colorMap[$method] ?? 'gray';
+
+        write(str_pad($route['method'], 8), $color);
+        write(str_pad('/' . $route['path'], 45));
+        writeln($route['handler']);
+    }
+    writeln();
+    success(count($routes) . ' route(s) registered');
+}
+
 function cmd_key_generate() {
     $key = bin2hex(random_bytes(32));
     $envPath = AURA_ROOT . '/.env';
-    $envExamplePath = AURA_ROOT . '/.env.example';
 
     if (file_exists($envPath)) {
         $content = file_get_contents($envPath);
@@ -465,26 +1169,553 @@ function cmd_key_generate() {
             $content .= "\nAPP_KEY={$key}\n";
         }
         file_put_contents($envPath, $content);
-    } elseif (file_exists($envExamplePath)) {
-        $content = file_get_contents($envExamplePath);
-        $content .= "\nAPP_KEY={$key}\n";
-        file_put_contents($envPath, $content);
     } else {
         file_put_contents($envPath, "APP_KEY={$key}\n");
     }
 
-    success("Application key generated successfully: {$key}");
-    info("Added to .env file.");
+    success("Application key generated: {$key}");
+}
+
+function cmd_make_event($params, $options) {
+    $name = $params[0] ?? null;
+    if (!$name) {
+        error('Usage: php aura make:event <name> [--force]');
+        return 1;
+    }
+
+    if (isset($options['help'])) {
+        info('Usage: php aura make:event <name> [--force]');
+        return;
+    }
+
+    $dir = AURA_SITE . '/events';
+    ensure_dir($dir);
+
+    $className = studlyCase($name);
+    $fileName = kebabCase($name) . '.php';
+    $filePath = "{$dir}/{$fileName}";
+
+    if (file_exists($filePath) && !isset($options['force'])) {
+        error("Event {$fileName} already exists! Use --force to overwrite.");
+        return 1;
+    }
+
+    $content = <<<PHP
+<?php
+
+namespace SiteEvents;
+
+class {$className}
+{
+    public \$data;
+
+    public function __construct(\$data = [])
+    {
+        \$this->data = \$data;
+    }
+}
+
+PHP;
+
+    file_put_contents($filePath, $content);
+    success("Event created: site/events/{$fileName}");
+}
+
+function cmd_make_listener($params, $options) {
+    $name = $params[0] ?? null;
+    if (!$name) {
+        error('Usage: php aura make:listener <name> [--force]');
+        return 1;
+    }
+
+    if (isset($options['help'])) {
+        info('Usage: php aura make:listener <name> [--force]');
+        return;
+    }
+
+    $dir = AURA_SITE . '/listeners';
+    ensure_dir($dir);
+
+    $className = studlyCase($name);
+    $fileName = kebabCase($name) . '.php';
+    $filePath = "{$dir}/{$fileName}";
+
+    if (file_exists($filePath) && !isset($options['force'])) {
+        error("Listener {$fileName} already exists! Use --force to overwrite.");
+        return 1;
+    }
+
+    $content = <<<PHP
+<?php
+
+namespace SiteListeners;
+
+class {$className}
+{
+    public function handle(\$event)
+    {
+        // Handle the event
+        // \$data = \$event->data;
+    }
+}
+
+PHP;
+
+    file_put_contents($filePath, $content);
+    success("Listener created: site/listeners/{$fileName}");
+}
+
+function cmd_make_request($params, $options) {
+    $name = $params[0] ?? null;
+    if (!$name) {
+        error('Usage: php aura make:request <name> [--force]');
+        return 1;
+    }
+
+    if (isset($options['help'])) {
+        info('Usage: php aura make:request <name> [--force]');
+        return;
+    }
+
+    $dir = AURA_SITE . '/requests';
+    ensure_dir($dir);
+
+    $className = studlyCase($name);
+    $fileName = kebabCase($name) . '.php';
+    $filePath = "{$dir}/{$fileName}";
+
+    if (file_exists($filePath) && !isset($options['force'])) {
+        error("Request {$fileName} already exists! Use --force to overwrite.");
+        return 1;
+    }
+
+    $content = <<<PHP
+<?php
+
+namespace SiteRequests;
+
+use AuraCore\\Validator;
+
+class {$className}
+{
+    protected \$rules = [];
+    protected \$messages = [];
+
+    public function rules()
+    {
+        return \$this->rules;
+    }
+
+    public function messages()
+    {
+        return \$this->messages;
+    }
+
+    public function validate(array \$data)
+    {
+        \$validator = new Validator();
+        return \$validator->validate(\$data, \$this->rules(), \$this->messages());
+    }
+
+    public function authorize()
+    {
+        return true;
+    }
+}
+
+PHP;
+
+    file_put_contents($filePath, $content);
+    success("Request class created: site/requests/{$fileName}");
+}
+
+function cmd_make_rule($params, $options) {
+    if (isset($options['help'])) {
+        info('Usage: php aura make:rule <name> [--force]');
+        info('  Creates a custom validation rule in site/rules/');
+        return;
+    }
+
+    $name = $params[0] ?? null;
+    if (!$name) {
+        error('Usage: php aura make:rule <name> [--force]');
+        return 1;
+    }
+
+    $dir = AURA_SITE . '/rules';
+    ensure_dir($dir);
+
+    $className = studlyCase($name);
+    $fileName = kebabCase($name) . '.php';
+    $filePath = "{$dir}/{$fileName}";
+
+    if (file_exists($filePath) && !isset($options['force'])) {
+        error("Rule {$fileName} already exists! Use --force to overwrite.");
+        return 1;
+    }
+
+    $content = <<<PHP
+<?php
+
+namespace SiteRules;
+
+class {$className}
+{
+    /**
+     * Validate the attribute.
+     *
+     * @param string \$attribute  Field name
+     * @param mixed  \$value      Field value
+     * @param array  \$params     Rule parameters (after colon)
+     * @param array  \$data       All input data
+     * @return bool
+     */
+    public function validate(\$attribute, \$value, \$params, \$data)
+    {
+        // Return true if valid, false otherwise
+        return true;
+    }
+
+    /**
+     * Get the error message.
+     *
+     * @param string \$attribute
+     * @param array  \$params
+     * @return string
+     */
+    public function message(\$attribute, \$params)
+    {
+        return "The {\$attribute} field is invalid.";
+    }
+}
+
+PHP;
+
+    file_put_contents($filePath, $content);
+    success("Rule created: site/rules/{$fileName}");
+}
+
+function cmd_make_scope($params, $options) {
+    if (isset($options['help'])) {
+        info('Usage: php aura make:scope <name> [--force]');
+        info('  Creates a global scope class for models in site/scopes/');
+        return;
+    }
+
+    $name = $params[0] ?? null;
+    if (!$name) {
+        error('Usage: php aura make:scope <name> [--force]');
+        return 1;
+    }
+
+    $dir = AURA_SITE . '/scopes';
+    ensure_dir($dir);
+
+    $className = studlyCase($name);
+    $fileName = kebabCase($name) . '.php';
+    $filePath = "{$dir}/{$fileName}";
+
+    if (file_exists($filePath) && !isset($options['force'])) {
+        error("Scope {$fileName} already exists! Use --force to overwrite.");
+        return 1;
+    }
+
+    $content = <<<PHP
+<?php
+
+namespace SiteScopes;
+
+use AuraCore\\Model;
+
+class {$className}
+{
+    /**
+     * Apply the scope to the query.
+     *
+     * @param Model \$model
+     * @param mixed \$query
+     * @return mixed
+     */
+    public function apply(Model \$model, \$query)
+    {
+        // Example: \$query->where('active', 1);
+        return \$query;
+    }
+}
+
+PHP;
+
+    file_put_contents($filePath, $content);
+    success("Scope created: site/scopes/{$fileName}");
+}
+
+function cmd_make_helper($params, $options) {
+    if (isset($options['help'])) {
+        info('Usage: php aura make:helper <name> [--force]');
+        info('  Creates a helper file in system/helpers/');
+        return;
+    }
+
+    $name = $params[0] ?? null;
+    if (!$name) {
+        error('Usage: php aura make:helper <name> [--force]');
+        return 1;
+    }
+
+    $dir = AURA_SYSTEM . '/helpers';
+    ensure_dir($dir);
+
+    $fileName = kebabCase($name) . '_helper.php';
+    $filePath = "{$dir}/{$fileName}";
+
+    if (file_exists($filePath) && !isset($options['force'])) {
+        error("Helper {$fileName} already exists! Use --force to overwrite.");
+        return 1;
+    }
+
+    $date = date('Y-m-d');
+    $content = <<<PHP
+<?php
+/**
+ * {$name} Helper
+ * Auto-generated on {$date}
+ */
+
+function {$name}_helper_example(\$param = '')
+{
+    return "Hello from {$name} helper!";
+}
+
+PHP;
+
+    file_put_contents($filePath, $content);
+    success("Helper created: system/helpers/{$fileName}");
+}
+
+function cmd_make_command($params, $options) {
+    if (isset($options['help'])) {
+        info('Usage: php aura make:command <name> [--force]');
+        info('  Creates a custom CLI command class in site/commands/');
+        info('  Register it in the aura file under the dispatch section.');
+        return;
+    }
+
+    $name = $params[0] ?? null;
+    if (!$name) {
+        error('Usage: php aura make:command <name> [--force]');
+        return 1;
+    }
+
+    $dir = AURA_SITE . '/commands';
+    ensure_dir($dir);
+
+    $className = studlyCase(str_replace(':', '-', $name));
+    $commandName = kebabCase($name);
+    $fileName = $commandName . '.php';
+    $filePath = "{$dir}/{$fileName}";
+
+    if (file_exists($filePath) && !isset($options['force'])) {
+        error("Command {$fileName} already exists! Use --force to overwrite.");
+        return 1;
+    }
+
+    $content = <<<PHP
+<?php
+
+namespace SiteCommands;
+
+class {$className}
+{
+    public \$name = '{$commandName}';
+    public \$description = 'Describe the {$commandName} command';
+    public \$usage = '{$commandName} [options]';
+
+    public function run(\$params, \$options)
+    {
+        // \$params  — positional arguments
+        // \$options — associative options (e.g. --name=value)
+        echo "Running {$commandName} command...\\n";
+    }
+}
+
+PHP;
+
+    file_put_contents($filePath, $content);
+    success("Command created: site/commands/{$fileName}");
+    writeln();
+    info('  To use this command, add a case to the dispatch switch in the aura file:');
+    info("    case '{$commandName}':");
+    info("        \$exitCode = (new SiteCommands\\{$className}())->run(\$params, \$options);");
+    info('        break;');
+    writeln();
+}
+
+function cmd_make_provider($params, $options) {
+    if (isset($options['help'])) {
+        info('Usage: php aura make:provider <name> [--force]');
+        info('  Creates a service provider in site/providers/');
+        return;
+    }
+
+    $name = $params[0] ?? null;
+    if (!$name) {
+        error('Usage: php aura make:provider <name> [--force]');
+        return 1;
+    }
+
+    $dir = AURA_SITE . '/providers';
+    ensure_dir($dir);
+
+    $className = studlyCase($name) . 'Provider';
+    $fileName = kebabCase($name) . '_provider.php';
+    $filePath = "{$dir}/{$fileName}";
+
+    if (file_exists($filePath) && !isset($options['force'])) {
+        error("Provider {$fileName} already exists! Use --force to overwrite.");
+        return 1;
+    }
+
+    $content = <<<PHP
+<?php
+
+namespace SiteProviders;
+
+class {$className}
+{
+    public function register(\$container)
+    {
+        // Bind services into the container
+        // \$container->bind('service', function (\$c) { return new Service(); });
+    }
+
+    public function boot()
+    {
+        // Run code after all providers are registered
+    }
+}
+
+PHP;
+
+    file_put_contents($filePath, $content);
+    success("Provider created: site/providers/{$fileName}");
+}
+
+function cmd_about() {
+    writeln();
+    write(' AuraPHP', 'cyan');
+    writeln(' Framework');
+    writeln(str_repeat('─', 50), 'gray');
+    writeln();
+
+    write('  Framework Version:  ', 'gray');
+    success('1.0');
+
+    write('  CLI Version:        ', 'gray');
+    writeln($GLOBALS['version'] ?? '1.0', 'cyan');
+
+    write('  PHP Version:        ', 'gray');
+    writeln(phpversion(), 'green');
+
+    write('  System:             ', 'gray');
+    writeln(php_uname('s') . ' ' . php_uname('r'), 'cyan');
+
+    write('  Server:             ', 'gray');
+    writeln(($_SERVER['SERVER_SOFTWARE'] ?? 'CLI'), 'cyan');
+
+    write('  Memory Limit:       ', 'gray');
+    writeln(ini_get('memory_limit') ?: '-1', 'yellow');
+
+    write('  Max Exec Time:      ', 'gray');
+    writeln(ini_get('max_execution_time') . 's', 'yellow');
+
+    write('  Project Root:       ', 'gray');
+    writeln(AURA_ROOT, 'cyan');
+
+    writeln();
+
+    // Check DB connection
+    if (file_exists(AURA_SYSTEM . '/config/database.php')) {
+        $dbConfig = require AURA_SYSTEM . '/config/database.php';
+        $default = $dbConfig['default'] ?? [];
+        $driver = $default['driver'] ?? 'unknown';
+        $host = $default['host'] ?? 'unknown';
+        $dbName = $default['database'] ?? 'unknown';
+        write('  DB Driver:          ', 'gray');
+        writeln($driver, 'green');
+        write('  DB Host:            ', 'gray');
+        writeln($host, 'cyan');
+        write('  DB Name:            ', 'gray');
+        writeln($dbName, 'cyan');
+        writeln();
+    }
+
+    // Count files
+    $counts = [
+        'Controllers' => count(glob(AURA_SITE . '/controllers/*.php')),
+        'Models'       => count(glob(AURA_SITE . '/models/*.php')),
+        'Migrations'   => count(glob(AURA_SITE . '/migrations/*.php')),
+        'Seeders'      => count(glob(AURA_SITE . '/seeders/*.php')),
+        'Middleware'   => count(glob(AURA_SITE . '/middleware/*.php')),
+        'Views'        => count(glob(AURA_SITE . '/views/*.php')),
+    ];
+
+    write('  Application Stats', 'bold');
+    writeln();
+    foreach ($counts as $label => $count) {
+        write(str_pad("    {$label}:", 20), 'gray');
+        writeln($count > 0 ? (string)$count : '0', $count > 0 ? 'green' : 'gray');
+    }
+    writeln();
+}
+
+function cmd_inspire() {
+    $quotes = [
+        '"The only way to do great work is to love what you do." — Steve Jobs',
+        '"Simplicity is the ultimate sophistication." — Leonardo da Vinci',
+        '"Code is like humor. When you have to explain it, it\'s bad." — Cory House',
+        '"First, solve the problem. Then, write the code." — John Johnson',
+        '"Any fool can write code that a computer can understand. Good programmers write code that humans can understand." — Martin Fowler',
+        '"The best time to plant a tree was 20 years ago. The second best time is now." — Chinese Proverb',
+        '"It does not matter how slowly you go as long as you do not stop." — Confucius',
+        '"Talk is cheap. Show me the code." — Linus Torvalds',
+        '"Make it work, make it right, make it fast." — Kent Beck',
+        '"Programming isn\'t about what you know; it\'s about what you can figure out." — Chris Pine',
+        '"The function of good software is to make the complex appear to be simple." — Grady Booch',
+        '"Before software can be reusable it first has to be usable." — Ralph Johnson',
+        '"Optimism is an occupational hazard of programming: feedback is the treatment." — Kent Beck',
+        '"The most damaging phrase in the language is: \'We\'ve always done it this way.\'" — Grace Hopper',
+        '"Debugging is twice as hard as writing the code in the first place." — Brian Kernighan',
+        '"A language that doesn\'t affect the way you think about programming is not worth knowing." — Alan Perlis',
+        '"Sometimes it pays to stay in bed on Monday rather than spending the rest of the week debugging Monday\'s code." — Dan Salomon',
+        '"The best error message is the one that never shows up." — Thomas Fuchs',
+        '"Software is a great combination between artistry and engineering." — Bill Gates',
+    ];
+
+    writeln();
+    write('  ✦ ', 'yellow');
+    writeln($quotes[array_rand($quotes)], 'cyan');
+    writeln();
 }
 
 // -------------------------------------------------------
 // Dispatch
 // -------------------------------------------------------
-writeln();
+
+$exitCode = 0;
 
 switch ($command) {
     case 'list':
-        cmd_list($commands, $version);
+        cmd_list($commands, $categories, $version);
+        break;
+
+    case 'help':
+    case '--help':
+    case '-h':
+        if (isset($params[0])) {
+            cmd_help($commands, $categories, $params[0]);
+        } else {
+            cmd_list($commands, $categories, $version);
+        }
         break;
 
     case 'serve':
@@ -495,20 +1726,104 @@ switch ($command) {
         cmd_route_list();
         break;
 
+    case 'key:generate':
+        cmd_key_generate();
+        break;
+
     case 'make:controller':
-        cmd_make_controller($params, $options);
+        $exitCode = cmd_make_controller($params, $options);
         break;
 
     case 'make:model':
-        cmd_make_model($params, $options);
+        $exitCode = cmd_make_model($params, $options);
+        break;
+
+    case 'make:migration':
+        $exitCode = cmd_make_migration($params, $options);
+        break;
+
+    case 'make:seeder':
+        $exitCode = cmd_make_seeder($params, $options);
         break;
 
     case 'make:view':
-        cmd_make_view($params, $options);
+        $exitCode = cmd_make_view($params, $options);
         break;
 
-    case 'key:generate':
-        cmd_key_generate();
+    case 'make:middleware':
+        $exitCode = cmd_make_middleware($params, $options);
+        break;
+
+    case 'make:event':
+        $exitCode = cmd_make_event($params, $options);
+        break;
+
+    case 'make:listener':
+        $exitCode = cmd_make_listener($params, $options);
+        break;
+
+    case 'make:request':
+        $exitCode = cmd_make_request($params, $options);
+        break;
+
+    case 'migrate':
+        $exitCode = cmd_migrate();
+        break;
+
+    case 'migrate:rollback':
+        $exitCode = cmd_migrate_rollback();
+        break;
+
+    case 'migrate:status':
+        $exitCode = cmd_migrate_status();
+        break;
+
+    case 'migrate:fresh':
+        $exitCode = cmd_migrate_fresh();
+        break;
+
+    case 'migrate:reset':
+        $exitCode = cmd_migrate_reset();
+        break;
+
+    case 'migrate:refresh':
+        $exitCode = cmd_migrate_refresh();
+        break;
+
+    case 'db:seed':
+        $exitCode = cmd_db_seed($options);
+        break;
+
+    case 'db:wipe':
+        $exitCode = cmd_db_wipe();
+        break;
+
+    case 'about':
+        cmd_about();
+        break;
+
+    case 'inspire':
+        cmd_inspire();
+        break;
+
+    case 'make:rule':
+        $exitCode = cmd_make_rule($params, $options);
+        break;
+
+    case 'make:scope':
+        $exitCode = cmd_make_scope($params, $options);
+        break;
+
+    case 'make:helper':
+        $exitCode = cmd_make_helper($params, $options);
+        break;
+
+    case 'make:command':
+        $exitCode = cmd_make_command($params, $options);
+        break;
+
+    case 'make:provider':
+        $exitCode = cmd_make_provider($params, $options);
         break;
 
     case '--version':
@@ -516,17 +1831,12 @@ switch ($command) {
         writeln("AuraPHP CLI v{$version}", 'cyan');
         break;
 
-    case 'help':
-    case '--help':
-    case '-h':
-        cmd_list($commands, $version);
-        break;
-
     default:
         error("Unknown command: {$command}");
         writeln();
         info("Run 'php aura list' to see available commands.");
+        $exitCode = 1;
         break;
 }
 
-writeln();
+exit($exitCode);

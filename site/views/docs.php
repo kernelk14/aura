@@ -5,6 +5,20 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title><?= htmlspecialchars($title ?? 'AuraPHP Framework') ?></title>
     <?php ownstrap_css(); ?>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/styles/github.min.css" id="hljs-theme">
+    <style>
+        pre { position: relative; padding: 1.25rem 1rem 0.75rem; background: #f6f8fa; border-color: #d0d7de; }
+        pre code { background: none; padding: 0; font-size: 0.8125rem; }
+        pre::before {
+            content: attr(data-lang);
+            position: absolute; top: 0.25rem; right: 0.75rem;
+            font-size: 0.6875rem; font-weight: 600; text-transform: uppercase;
+            color: #8b949e; letter-spacing: 0.5px;
+        }
+        .theme-dark pre { background: #161b22; border-color: #30363d; }
+        .theme-dark pre code.hljs { background: none; }
+        .hljs { background: none; padding: 0; }
+    </style>
 </head>
 <body class="theme-light">
 
@@ -196,9 +210,75 @@ class UserProfile extends Controller
                                 <tr><td><code>$this-&gt;loadDatabase($group)</code></td><td>Load a database connection</td></tr>
                                 <tr><td><code>$this-&gt;redirect('url')</code></td><td>Redirect to a URL</td></tr>
                                 <tr><td><code>$this-&gt;config('item')</code></td><td>Get a configuration value</td></tr>
+                                <tr><td><code>$this-&gt;request()</code></td><td>Get the current Request object</td></tr>
+                                <tr><td><code>$this-&gt;response()</code></td><td>Get a Response builder instance</td></tr>
+                                <tr><td><code>$this-&gt;session()</code></td><td>Get a Session instance with flash messages</td></tr>
+                                <tr><td><code>$this-&gt;validate($data, $rules)</code></td><td>Validate data with the Validator</td></tr>
+                                <tr><td><code>$this-&gt;auth($modelClass)</code></td><td>Get the Auth instance</td></tr>
+                                <tr><td><code>$this-&gt;json($data, $status)</code></td><td>Return a JSON response</td></tr>
+                                <tr><td><code>$this-&gt;back()</code></td><td>Redirect back to the previous page</td></tr>
                             </tbody>
                         </table>
                     </div>
+
+                    <h5 class="mt-3">Request object</h5>
+                    <pre>public function store()
+{
+    $request = $this-&gt;request();
+
+    // Get input values
+    $name  = $request-&gt;input('name');
+    $email = $request-&gt;input('email', 'default@example.com');
+
+    // Get all input as array
+    $all = $request-&gt;all();
+
+    // Get only specific fields
+    $data = $request-&gt;only(['name', 'email']);
+
+    // Check if field exists
+    if ($request-&gt;has('email')) { ... }
+
+    // Get HTTP method
+    $method = $request-&gt;method();  // 'GET', 'POST', etc.
+
+    // Check if AJAX request
+    if ($request-&gt;ajax()) { ... }
+
+    // Get uploaded file
+    $file = $request-&gt;file('avatar');
+
+    // Magic property access
+    $name = $request-&gt;name;
+}</pre>
+
+                    <h5 class="mt-3">Response object</h5>
+                    <pre>public function api()
+{
+    // JSON response
+    return $this-&gt;json(['status' => 'ok'], 200);
+
+    // Custom status code
+    return $this-&gt;response()
+        -&gt;status(201)
+        -&gt;json(['id' => 123]);
+
+    // Redirect with flash message
+    return $this-&gt;response()
+        -&gt;redirect('/dashboard')
+        -&gt;with('success', 'Welcome back!');
+
+    // Redirect back with input
+    return $this-&gt;response()
+        -&gt;back()
+        -&gt;withInput();
+}
+
+// In your view, display flash messages:
+// &lt;?php $session = new AuraCore\Session(); ?&gt;
+// &lt;?php if ($flash = $session-&gt;flash('success')): ?&gt;
+//     &lt;div class="alert alert-success"&gt;&lt;?= $flash ?&gt;&lt;/div&gt;
+// &lt;?php endif; ?&gt;</pre>
 
                     <h5 class="mt-3">Generate controllers with the CLI</h5>
                     <pre>php aura make:controller UserProfile</pre>
@@ -254,119 +334,879 @@ $this-&gt;loadView('user-profile', [
 
         <!-- ============ MODELS ============ -->
         <section id="models">
-            <h2 class="fw-bold mt-5 mb-3 pb-2 border-bottom">Models</h2>
+            <h2 class="fw-bold mt-5 mb-3 pb-2 border-bottom">Models (ActiveRecord)</h2>
             <div class="card mb-4">
                 <div class="card-body">
-                    <p>Models live in <code>site/models/</code> and extend <code>AuraCore\Model</code>.</p>
+                    <p>Models live in <code>site/models/</code> and extend <code>AuraCore\Model</code>. Each model maps to a database table — the table name is automatically derived from the class name (e.g. <code>User</code> &rarr; <code>users</code>, <code>BlogPost</code> &rarr; <code>blog_posts</code>). You can override it with the <code>$table</code> property.</p>
 
+                    <h5>Basic model</h5>
                     <pre>&lt;?php
-// site/models/user_model.php
+// site/models/user.php
 
 use AuraCore\Model;
 
-class User_Model extends Model
+class User extends Model
 {
-    private $table = 'users';
-
-    public function getAll()
-    {
-        $db = $this-&gt;loadDatabase();
-        return $db-&gt;get($this-&gt;table);
-    }
-
-    public function getById($id)
-    {
-        $db = $this-&gt;loadDatabase();
-        return $db-&gt;getWhere($this-&gt;table, ['id' =&gt; $id]);
-    }
-
-    public function create($data)
-    {
-        $db = $this-&gt;loadDatabase();
-        return $db-&gt;insert($this-&gt;table, $data);
-    }
-
-    public function update($id, $data)
-    {
-        $db = $this-&gt;loadDatabase();
-        return $db-&gt;update($this-&gt;table, $data, ['id' =&gt; $id]);
-    }
-
-    public function delete($id)
-    {
-        $db = $this-&gt;loadDatabase();
-        return $db-&gt;delete($this-&gt;table, ['id' =&gt; $id]);
-    }
+    protected $fillable = ['name', 'email', 'password'];
+    protected $hidden = ['password'];
+    protected $casts = [
+        'is_active' =&gt; 'bool',
+    ];
 }</pre>
 
-                    <h5>Usage in a controller</h5>
-                    <pre>$userModel = $this-&gt;loadModel('user_model');
-$users = $userModel-&gt;getAll();</pre>
+                    <h5>Querying</h5>
+                    <pre>// Get all records
+$users = User::all();
+
+// Find by primary key
+$user = User::find(1);
+
+// Find multiple
+$users = User::findMany([1, 2, 3]);
+
+// Fluent where clauses
+$activeUsers = User::where('is_active', 1)-&gt;get();
+$adults = User::where('age', '&gt;=', 18)-&gt;orderBy('name')-&gt;get();
+$user = User::where('email', 'alice@example.com')-&gt;first();
+
+// Count, exists, aggregates
+$count = User::where('is_active', 1)-&gt;count();
+$exists = User::where('email', $email)-&gt;exists();
+$avg = User::avg('age');</pre>
+
+                    <h5>Creating &amp; updating</h5>
+                    <pre>// Create and save
+$user = new User();
+$user-&gt;name = 'Alice';
+$user-&gt;email = 'alice@example.com';
+$user-&gt;save();
+
+// Create with attributes
+$user = User::create([
+    'name' =&gt; 'Bob',
+    'email' =&gt; 'bob@example.com',
+]);
+
+// Find and update
+$user = User::find(1);
+$user-&gt;name = 'Alice Smith';
+$user-&gt;save();
+
+// Update or create
+$user = User::updateOrCreate(
+    ['email' =&gt; 'alice@example.com'],
+    ['name' =&gt; 'Alice']
+);
+
+// First or create
+$user = User::firstOrCreate(
+    ['email' =&gt; 'alice@example.com']
+);</pre>
+
+                    <h5>Deleting</h5>
+                    <pre>$user = User::find(1);
+$user-&gt;delete();
+
+// Delete by ID
+$user = new User();
+$user-&gt;destroy(1);
+$user-&gt;destroy([1, 2, 3]);</pre>
+
+                    <h5>Timestamps</h5>
+                    <p>By default, <code>created_at</code> and <code>updated_at</code> are managed automatically. Disable with <code>public $timestamps = false;</code>.</p>
+
+                    <h5>Attribute casting</h5>
+                    <pre>protected $casts = [
+    'id'        =&gt; 'int',
+    'is_active' =&gt; 'bool',
+    'score'     =&gt; 'float',
+    'meta'      =&gt; 'json',   // auto-encodes/decodes
+    'birthday'  =&gt; 'date',   // returns DateTime object
+];</pre>
+
+                    <h5>Relationships</h5>
+                    <pre>class User extends Model
+{
+    public function posts()
+    {
+        return $this-&gt;hasMany(Post::class, 'user_id');
+    }
+
+    public function profile()
+    {
+        return $this-&gt;hasOne(Profile::class, 'user_id');
+    }
+}
+
+class Post extends Model
+{
+    public function author()
+    {
+        return $this-&gt;belongsTo(User::class, 'user_id');
+    }
+
+    public function tags()
+    {
+        return $this-&gt;belongsToMany(Tag::class, 'post_tags');
+    }
+}
+
+// Usage
+$posts = User::find(1)-&gt;posts()-&gt;get();
+$author = Post::find(1)-&gt;author()-&gt;first();</pre>
+
+                    <h5>Eager loading</h5>
+                    <pre>// Lazy loading (N+1 query)
+$users = User::all();
+foreach ($users as $user) {
+    echo $user->load('posts');  // One query per user
+}
+
+// Eager loading (2 queries total)
+$users = User::with('posts')->get();
+foreach ($users as $user) {
+    echo $user->getRelation('posts');  // No additional queries
+}
+
+// Eager load specific relations
+$users = User::with('posts', 'profile')->get();
+$user = User::with('posts')->find(1);
+
+// Lazy eager load on existing models
+$user = User::find(1);
+$user->load('posts', 'profile');</pre>
+
+                    <h5>Soft deletes</h5>
+                    <pre>use AuraCore\SoftDeletes;
+
+class Post extends Model
+{
+    use SoftDeletes;
+}
+
+// Soft delete (sets deleted_at, does not remove row)
+$post = Post::find(1);
+$post->delete();  // Sets deleted_at timestamp
+
+// Force delete (removes from database)
+$post->forceDelete();
+
+// Include soft-deleted records
+$posts = Post::withTrashed()->get();
+
+// Only soft-deleted records
+$trashed = Post::onlyTrashed()->get();
+
+// Restore a soft-deleted record
+$post->restore();
+
+// Check if soft-deleted
+if ($post->trashed()) { ... }</pre>
+
+                    <h5>Global scopes</h5>
+                    <pre class="language-php">// Add a global scope (e.g., in a model's boot method)
+User::addGlobalScope(function ($query) {
+    $query->where('is_active', 1);
+});
+
+// Query without global scopes
+$allUsers = User::withoutGlobalScopes()->get();</pre>
+
+                    <h5>Serialization</h5>
+                    <pre>$user = User::find(1);
+
+// To array
+$data = $user->toArray();
+
+// To JSON
+$json = $user->toJson();
+
+// Hidden attributes are excluded automatically
+protected $hidden = ['password'];</pre>
 
                     <h5 class="mt-3">Generate models with the CLI</h5>
                     <pre>php aura make:model User</pre>
+                    <p class="text-sm text-muted">Use <code>--no-timestamps</code> to omit automatic timestamp columns.</p>
                 </div>
             </div>
         </section>
 
         <!-- ============ DATABASE ============ -->
         <section id="database">
-            <h2 class="fw-bold mt-5 mb-3 pb-2 border-bottom">Database</h2>
+            <h2 class="fw-bold mt-5 mb-3 pb-2 border-bottom">Database (Fluent Query Builder)</h2>
             <div class="card mb-4">
                 <div class="card-body">
+                    <p>The query builder provides a fluent, chainable interface for building and running SQL queries. Get an instance via <code>$this-&gt;loadDatabase()-&gt;table('name')</code> or directly from a model with <code>Model::where(...)</code>.</p>
+
                     <h5>Configuration</h5>
                     <p>Edit <code>system/config/database.php</code>:</p>
                     <pre>return [
     'default' => [
-        'driver'   => 'pdo_mysql',   // mysqli, pdo_mysql, pdo_pgsql, pdo_sqlite
-        'host'     => 'localhost',
+        'driver'   => 'mysql',      // mysql, pgsql, sqlite
+        'host'     => '127.0.0.1',
+        'port'     => 3306,
         'username' => 'root',
-        'password' => 'secret',
+        'password' => '',
         'database' => 'my_app',
         'charset'  => 'utf8',
+    ],
+
+    // SQLite (no host/port needed)
+    'sqlite' => [
+        'driver'   => 'sqlite',
+        'database' => __DIR__ . '/../../site/database.sqlite',
+    ],
+
+    // PostgreSQL
+    'pgsql' => [
+        'driver'   => 'pgsql',
+        'host'     => '127.0.0.1',
+        'port'     => 5432,
+        'username' => 'root',
+        'password' => '',
+        'database' => 'my_app',
     ],
 ];</pre>
 
                     <h5>Supported drivers</h5>
                     <div class="d-flex gap-2 flex-wrap">
-                        <span class="badge bg-success">mysqli</span> MySQL via mysqli
-                        <span class="badge bg-warning text-dark ms-1">pdo_mysql</span> MySQL via PDO
-                        <span class="badge bg-info ms-1">pdo_pgsql</span> PostgreSQL via PDO
-                        <span class="badge bg-secondary ms-1">pdo_sqlite</span> SQLite via PDO
+                        <span class="badge bg-success">mysql</span> MySQL via PDO
+                        <span class="badge bg-primary ms-1">pgsql</span> PostgreSQL via PDO
+                        <span class="badge bg-secondary ms-1">sqlite</span> SQLite via PDO
                     </div>
 
-                    <h5 class="mt-3">Usage</h5>
+                    <h5 class="mt-3">Basic queries</h5>
                     <pre>$db = $this-&gt;loadDatabase();
 
 // Get all rows
-$users = $db-&gt;get('users');
+$users = $db-&gt;table('users')-&gt;get();
 
-// Get with WHERE
-$user = $db-&gt;getWhere('users', ['id' => 1]);
+// Select specific columns
+$users = $db-&gt;table('users')-&gt;select('id', 'name', 'email')-&gt;get();
 
-// Insert (returns insert ID)
-$id = $db-&gt;insert('users', [
-    'name' => 'Alice',
-    'email' => 'alice@example.com',
+// Get a single row by primary key
+$user = $db-&gt;table('users')-&gt;find(1);
+
+// Get the first matching row
+$user = $db-&gt;table('users')-&gt;where('email', 'alice@test.com')-&gt;first();</pre>
+
+                    <h5>Where clauses</h5>
+                    <pre>// Basic where (assumes '=' operator)
+$db-&gt;table('users')-&gt;where('is_active', 1)-&gt;get();
+
+// Custom operator
+$db-&gt;table('users')-&gt;where('age', '&gt;=', 18)-&gt;get();
+$db-&gt;table('users')-&gt;where('name', 'LIKE', '%alice%')-&gt;get();
+
+// Multiple wheres (AND)
+$db-&gt;table('users')-&gt;where('is_active', 1)-&gt;where('age', '&gt;', 21)-&gt;get();
+
+// OR where
+$db-&gt;table('users')-&gt;where('role', 'admin')-&gt;orWhere('role', 'moderator')-&gt;get();
+
+// Where IN
+$db-&gt;table('users')-&gt;whereIn('id', [1, 2, 3])-&gt;get();
+
+// Where NULL / NOT NULL
+$db-&gt;table('users')-&gt;whereNull('deleted_at')-&gt;get();
+$db-&gt;table('users')-&gt;whereNotNull('email_verified_at')-&gt;get();</pre>
+
+                    <h5>Ordering, limits &amp; offsets</h5>
+                    <pre>$db-&gt;table('users')-&gt;orderBy('name')-&gt;get();
+$db-&gt;table('users')-&gt;orderBy('created_at', 'DESC')-&gt;get();
+
+$db-&gt;table('users')-&gt;limit(10)-&gt;get();
+$db-&gt;table('users')-&gt;limit(10)-&gt;offset(20)-&gt;get();    // page 3 of 10
+
+// Shorthand
+$db-&gt;table('users')-&gt;take(5)-&gt;skip(10)-&gt;get();</pre>
+
+                    <h5>Joins</h5>
+                    <pre>$db-&gt;table('users')
+   -&gt;join('posts', 'users.id', '=', 'posts.user_id')
+   -&gt;select('users.name', 'posts.title')
+   -&gt;get();
+
+$db-&gt;table('users')
+   -&gt;leftJoin('profiles', 'users.id', '=', 'profiles.user_id')
+   -&gt;get();
+
+$db-&gt;table('orders')
+   -&gt;rightJoin('payments', 'orders.id', '=', 'payments.order_id')
+   -&gt;get();</pre>
+
+                    <h5>Inserts, updates &amp; deletes</h5>
+                    <pre>// Insert single row (returns the new ID)
+$id = $db-&gt;table('users')-&gt;insert([
+    'name' =&gt; 'Alice',
+    'email' =&gt; 'alice@example.com',
 ]);
 
-// Update
-$db-&gt;update('users', ['name' => 'Bob'], ['id' => 1]);
+// Insert multiple rows (returns row count)
+$count = $db-&gt;table('users')-&gt;insert([
+    ['name' =&gt; 'Bob', 'email' =&gt; 'bob@test.com'],
+    ['name' =&gt; 'Carol', 'email' =&gt; 'carol@test.com'],
+]);
 
-// Delete
-$db-&gt;delete('users', ['id' => 1]);
+// Update (returns affected row count)
+$affected = $db-&gt;table('users')-&gt;where('id', 1)-&gt;update([
+    'name' =&gt; 'Alice Smith',
+]);
 
-// Raw SQL query
-$results = $db-&gt;query('SELECT * FROM users WHERE active = 1');
+// Delete (returns affected row count)
+$deleted = $db-&gt;table('users')-&gt;where('id', 5)-&gt;delete();
 
-// Last insert ID / affected rows
-$id = $db-&gt;lastInsertId();
-$count = $db-&gt;affectedRows();</pre>
+// Truncate table
+$db-&gt;table('users')-&gt;truncate();</pre>
+
+                    <h5>Aggregates</h5>
+                    <pre>$count = $db-&gt;table('users')-&gt;count();
+$total = $db-&gt;table('orders')-&gt;sum('amount');
+$avg   = $db-&gt;table('products')-&gt;avg('price');
+$min   = $db-&gt;table('products')-&gt;min('price');
+$max   = $db-&gt;table('products')-&gt;max('price');
+$exists = $db-&gt;table('users')-&gt;where('email', $email)-&gt;exists();</pre>
+
+                    <h5>Group by &amp; having</h5>
+                    <pre>$db-&gt;table('orders')
+   -&gt;select('user_id', 'SUM(amount) as total')
+   -&gt;groupBy('user_id')
+   -&gt;having('total', '&gt;', 100)
+   -&gt;get();</pre>
+
+                    <h5>Raw queries</h5>
+                    <pre>$results = $db-&gt;query('SELECT * FROM users WHERE active = ?', [1]);
+$db-&gt;statement('UPDATE users SET last_login = NOW() WHERE id = ?', [$id]);</pre>
+
+                    <h5>Transactions</h5>
+                    <pre>$db-&gt;beginTransaction();
+try {
+    $db-&gt;table('accounts')-&gt;where('id', 1)-&gt;update(['balance' =&gt; 100]);
+    $db-&gt;table('accounts')-&gt;where('id', 2)-&gt;update(['balance' =&gt; 200]);
+    $db-&gt;commit();
+} catch (\Exception $e) {
+    $db-&gt;rollBack();
+}</pre>
+
+                    <h5>Pagination</h5>
+                    <pre>$paginator = $db-&gt;table('users')-&gt;paginate(15);
+
+// In your controller:
+$data = [
+    'users' =&gt; $paginator-&gt;items(),
+    'links' =&gt; $paginator-&gt;links(),    // HTML pagination links
+];
+
+// Or with a model:
+$paginator = User::paginate(15);
+
+// Pagination methods:
+$paginator-&gt;currentPage();   // int
+$paginator-&gt;lastPage();      // int
+$paginator-&gt;total();         // int
+$paginator-&gt;hasPages();      // bool
+$paginator-&gt;hasMorePages();  // bool
+$paginator-&gt;onFirstPage();   // bool
+$paginator-&gt;nextPageUrl();   // string|null
+$paginator-&gt;previousPageUrl(); // string|null
+$paginator-&gt;toArray();       // all data as array</pre>
 
                     <h5 class="mt-3">Multiple database connections</h5>
                     <p>Define multiple groups in <code>database.php</code> and reference them by name:</p>
                     <pre>$analytics = $this-&gt;loadDatabase('analytics');
 $logs = $this-&gt;loadDatabase('logs');</pre>
+
+                    <h5>Backward compatibility</h5>
+                    <p>The old API still works — no need to rewrite existing code:</p>
+                    <pre>$db = $this-&gt;loadDatabase();
+$users = $db-&gt;get('users');
+$user  = $db-&gt;getWhere('users', ['id' =&gt; 1]);
+$id    = $db-&gt;insert('users', ['name' =&gt; 'Alice']);
+$db-&gt;update('users', ['name' =&gt; 'Bob'], ['id' =&gt; 1]);
+$db-&gt;delete('users', ['id' =&gt; 1]);</pre>
+                </div>
+            </div>
+        </section>
+
+        <!-- ============ MIGRATIONS ============ -->
+        <section id="migrations">
+            <h2 class="fw-bold mt-5 mb-3 pb-2 border-bottom">Migrations</h2>
+            <div class="card mb-4">
+                <div class="card-body">
+                    <p>Migrations are version-controlled schema changes stored in <code>site/migrations/</code>. They let you define and share your database structure with your team.</p>
+
+                    <h5>Creating a migration</h5>
+                    <pre>php aura make:migration create_users_table</pre>
+                    <p class="text-sm text-muted">Name migrations descriptively with <code>snake_case</code>. The prefix <code>create_</code> and suffix <code>_table</code> are detected to pre-fill the schema.</p>
+
+                    <p>This generates a file like <code>site/migrations/2026_06_01_120000_create_users_table.php</code>:</p>
+                    <pre>&lt;?php
+
+use AuraCore\Schema;
+use AuraCore\Migration;
+
+class Migration_CreateUsersTable extends Migration
+{
+    public function up()
+    {
+        Schema::create('users', function ($table) {
+            $table-&gt;increments('id');
+            $table-&gt;string('name', 100);
+            $table-&gt;string('email')-&gt;unique();
+            $table-&gt;string('password');
+            $table-&gt;boolean('is_active')-&gt;defaultValue(1);
+            $table-&gt;timestamps();     // created_at, updated_at
+            $table-&gt;softDeletes();    // deleted_at
+        });
+    }
+
+    public function down()
+    {
+        Schema::drop('users');
+    }
+}</pre>
+
+                    <h5>Running migrations</h5>
+                    <pre>php aura migrate</pre>
+                    <p>This runs all pending migrations in order. A <code>migrations</code> table tracks what has been applied.</p>
+
+                    <h5>Rolling back</h5>
+                    <pre>php aura migrate:rollback</pre>
+                    <p>Rolls back the last batch of migrations by calling each <code>down()</code> method.</p>
+
+                    <h5>Available column types</h5>
+                    <div class="overflow-auto">
+                        <table class="data-table data-table-bordered data-table-sm">
+                            <thead><tr><th>Method</th><th>SQL Type</th></tr></thead>
+                            <tbody>
+                                <tr><td><code>$table-&gt;increments('id')</code></td><td>INT UNSIGNED AUTO_INCREMENT (primary key)</td></tr>
+                                <tr><td><code>$table-&gt;bigIncrements('id')</code></td><td>BIGINT UNSIGNED AUTO_INCREMENT</td></tr>
+                                <tr><td><code>$table-&gt;string('col', 255)</code></td><td>VARCHAR</td></tr>
+                                <tr><td><code>$table-&gt;char('col', 255)</code></td><td>CHAR</td></tr>
+                                <tr><td><code>$table-&gt;text('col')</code></td><td>TEXT</td></tr>
+                                <tr><td><code>$table-&gt;mediumText('col')</code></td><td>MEDIUMTEXT</td></tr>
+                                <tr><td><code>$table-&gt;longText('col')</code></td><td>LONGTEXT</td></tr>
+                                <tr><td><code>$table-&gt;integer('col')</code></td><td>INT</td></tr>
+                                <tr><td><code>$table-&gt;bigInteger('col')</code></td><td>BIGINT</td></tr>
+                                <tr><td><code>$table-&gt;tinyInteger('col')</code></td><td>TINYINT</td></tr>
+                                <tr><td><code>$table-&gt;boolean('col')</code></td><td>TINYINT(1)</td></tr>
+                                <tr><td><code>$table-&gt;decimal('col', 8, 2)</code></td><td>DECIMAL</td></tr>
+                                <tr><td><code>$table-&gt;float('col', 8, 2)</code></td><td>FLOAT</td></tr>
+                                <tr><td><code>$table-&gt;date('col')</code></td><td>DATE</td></tr>
+                                <tr><td><code>$table-&gt;dateTime('col')</code></td><td>DATETIME</td></tr>
+                                <tr><td><code>$table-&gt;timestamp('col')</code></td><td>TIMESTAMP</td></tr>
+                                <tr><td><code>$table-&gt;json('col')</code></td><td>JSON</td></tr>
+                                <tr><td><code>$table-&gt;enum('col', ['a', 'b'])</code></td><td>ENUM</td></tr>
+                                <tr><td><code>$table-&gt;binary('col')</code></td><td>BLOB</td></tr>
+                            </tbody>
+                        </table>
+                    </div>
+
+                    <h5 class="mt-3">Column modifiers</h5>
+                    <pre>$table-&gt;string('email')-&gt;nullable();
+$table-&gt;string('email')-&gt;nullable(false);
+$table-&gt;integer('views')-&gt;defaultValue(0);
+$table-&gt;integer('id')-&gt;unsigned();
+$table-&gt;string('col')-&gt;after('id');
+$table-&gt;string('col')-&gt;comment('User display name');
+$table-&gt;string('email')-&gt;unique('optional_index_name');
+$table-&gt;string('name')-&gt;index('idx_name');</pre>
+
+                    <h5>Foreign keys</h5>
+                    <pre>Schema::create('posts', function ($table) {
+    $table-&gt;increments('id');
+    $table-&gt;string('title');
+    $table-&gt;integer('user_id')-&gt;unsigned();
+    $table-&gt;text('body');
+    $table-&gt;timestamps();
+
+    $table-&gt;foreign('user_id')
+          -&gt;references('id')
+          -&gt;on('users')
+          -&gt;onDelete('cascade')
+          -&gt;onUpdate('cascade');
+});</pre>
+
+                    <h5>Modifying existing tables</h5>
+                    <pre>php aura make:migration add_phone_to_users_table</pre>
+                    <pre>public function up()
+{
+    Schema::table('users', function ($table) {
+        $table-&gt;string('phone', 20)-&gt;nullable()-&gt;after('email');
+        $table-&gt;string('avatar')-&gt;nullable();
+    });
+}
+
+public function down()
+{
+    Schema::table('users', function ($table) {
+        $table-&gt;dropColumn('phone');
+        $table-&gt;dropColumn('avatar');
+    });
+}</pre>
+
+                    <h5>Dropping tables</h5>
+                    <pre>Schema::drop('users');
+Schema::dropIfExists('users');</pre>
+
+                    <h5>Checking table/column existence</h5>
+                    <pre>if (Schema::hasTable('users')) { ... }
+if (Schema::hasColumn('users', 'email')) { ... }</pre>
+                </div>
+            </div>
+        </section>
+
+        <!-- ============ SEEDING ============ -->
+        <section id="seeding">
+            <h2 class="fw-bold mt-5 mb-3 pb-2 border-bottom">Database Seeding</h2>
+            <div class="card mb-4">
+                <div class="card-body">
+                    <p>Seeders populate your database with test or default data. They live in <code>site/seeders/</code>.</p>
+
+                    <h5>Creating a seeder</h5>
+                    <pre>php aura make:seeder User</pre>
+
+                    <p>This generates <code>site/seeders/user_seeder.php</code>:</p>
+                    <pre>&lt;?php
+
+use AuraCore\Seeder;
+
+class UserSeeder extends Seeder
+{
+    public function run()
+    {
+        $this-&gt;db-&gt;table('users')-&gt;insert([
+            ['name' =&gt; 'Alice', 'email' =&gt; 'alice@example.com'],
+            ['name' =&gt; 'Bob',   'email' =&gt; 'bob@example.com'],
+            ['name' =&gt; 'Carol', 'email' =&gt; 'carol@example.com'],
+        ]);
+    }
+}</pre>
+
+                    <h5>Running seeders</h5>
+                    <pre>php aura db:seed</pre>
+                    <p>Runs all seeders in <code>site/seeders/</code> in alphabetical order.</p>
+
+                    <h5>Calling other seeders</h5>
+                    <pre>class DatabaseSeeder extends Seeder
+{
+    public function run()
+    {
+        $this-&gt;call(UserSeeder::class);
+        $this-&gt;call(PostSeeder::class);
+        $this-&gt;call(TagSeeder::class);
+    }
+}</pre>
+                </div>
+            </div>
+        </section>
+
+        <!-- ============ VALIDATION ============ -->
+        <section id="validation">
+            <h2 class="fw-bold mt-5 mb-3 pb-2 border-bottom">Validation</h2>
+            <div class="card mb-4">
+                <div class="card-body">
+                    <p>Validate incoming request data with the built-in <code>Validator</code> class. Supports common rules like required, email, min, max, unique, and more.</p>
+
+                    <h5>Basic usage</h5>
+                    <pre>use AuraCore\Validator;
+
+$validator = new Validator();
+$validation = $validator->validate($_POST, [
+    'name'  => 'required|string|max:255',
+    'email' => 'required|email|unique:users,email',
+    'age'   => 'required|numeric|min:18|max:120',
+    'terms' => 'required',
+]);
+
+if ($validation->fails()) {
+    $errors = $validation->errors();
+    // $errors['name'] = ['The name field is required.']
+}</pre>
+
+                    <h5>In a controller</h5>
+                    <pre>public function store()
+{
+    $validation = $this->validate(request()->all(), [
+        'title' => 'required|string|max:255',
+        'body'  => 'required|string',
+        'email' => 'required|email',
+    ]);
+
+    if ($validation->fails()) {
+        return $this->response()->back();
+    }
+
+    // Save the data...
+}</pre>
+
+                    <h5>Available rules</h5>
+                    <div class="overflow-auto">
+                        <table class="data-table data-table-bordered data-table-sm">
+                            <thead><tr><th>Rule</th><th>Description</th></tr></thead>
+                            <tbody>
+                                <tr><td><code>required</code></td><td>Field must not be empty</td></tr>
+                                <tr><td><code>email</code></td><td>Must be a valid email address</td></tr>
+                                <tr><td><code>min:N</code></td><td>Minimum length (string) / value (numeric) / count (array)</td></tr>
+                                <tr><td><code>max:N</code></td><td>Maximum length / value / count</td></tr>
+                                <tr><td><code>numeric</code></td><td>Must be a number</td></tr>
+                                <tr><td><code>integer</code></td><td>Must be an integer</td></tr>
+                                <tr><td><code>string</code></td><td>Must be a string</td></tr>
+                                <tr><td><code>boolean</code></td><td>Must be true/false/0/1</td></tr>
+                                <tr><td><code>confirmed</code></td><td>Field must match <code>field_confirmation</code></td></tr>
+                                <tr><td><code>same:N</code></td><td>Must match field <code>N</code></td></tr>
+                                <tr><td><code>url</code></td><td>Must be a valid URL</td></tr>
+                                <tr><td><code>alpha</code></td><td>Must contain only letters</td></tr>
+                                <tr><td><code>alpha_num</code></td><td>Must contain only letters and numbers</td></tr>
+                                <tr><td><code>alpha_dash</code></td><td>Must contain only letters, numbers, dashes, underscores</td></tr>
+                                <tr><td><code>date</code></td><td>Must be a valid date</td></tr>
+                                <tr><td><code>after:DATE</code></td><td>Must be after the given date</td></tr>
+                                <tr><td><code>before:DATE</code></td><td>Must be before the given date</td></tr>
+                                <tr><td><code>size:N</code></td><td>Must be exactly N characters/values</td></tr>
+                                <tr><td><code>between:N,M</code></td><td>Must be between N and M</td></tr>
+                                <tr><td><code>unique:table,column,ignoreId,ignoreColumn</code></td><td>Value must be unique in database table</td></tr>
+                            </tbody>
+                        </table>
+                    </div>
+
+                    <h5 class="mt-3">Custom error messages</h5>
+                    <pre>$validation = $validator->validate($data, [
+        'email' => 'required|email',
+    ], [
+        'email.required' => 'We need your email address!',
+        'email.email'    => 'That does not look like an email...',
+    ]);</pre>
+                </div>
+            </div>
+        </section>
+
+        <!-- ============ MIDDLEWARE ============ -->
+        <section id="middleware">
+            <h2 class="fw-bold mt-5 mb-3 pb-2 border-bottom">Middleware</h2>
+            <div class="card mb-4">
+                <div class="card-body">
+                    <p>Middleware sits between a request and your controller. Use it for authentication checks, logging, CORS headers, request modification, and more.</p>
+
+                    <h5>Creating middleware</h5>
+                    <pre>php aura make:middleware Auth</pre>
+                    <p>Generated in <code>site/middleware/</code>:</p>
+                    <pre>&lt;?php
+
+namespace SiteMiddleware;
+
+class Auth
+{
+    public function handle($request, $next)
+    {
+        // Code before the request reaches the controller
+        if (!isset($_SESSION['user_id'])) {
+            header('Location: /login');
+            exit;
+        }
+
+        $response = $next($request);
+
+        // Code after the controller has handled the request
+        return $response;
+    }
+}</pre>
+
+                    <h5>Applying middleware to routes</h5>
+                    <pre>// Single route
+$router->get('dashboard', 'dashboard@index')->middleware('Auth');
+
+// Route group with middleware
+$router->group(['middleware' => ['Auth']], function ($router) {
+    $router->get('dashboard', 'dashboard@index');
+    $router->get('settings', 'settings@index');
+    $router->post('settings', 'settings@update');
+});</pre>
+
+                    <p>Middleware classes in <code>site/middleware/</code> are auto-discovered. Reference them by class name (without namespace prefix).</p>
+                </div>
+            </div>
+        </section>
+
+        <!-- ============ AUTHENTICATION ============ -->
+        <section id="auth">
+            <h2 class="fw-bold mt-5 mb-3 pb-2 border-bottom">Authentication</h2>
+            <div class="card mb-4">
+                <div class="card-body">
+                    <p>The <code>Auth</code> class provides session-based authentication. It works with any model that has <code>email</code> and <code>password</code> columns.</p>
+
+                    <h5>Basic usage</h5>
+                    <pre>use AuraCore\Auth;
+
+$auth = new Auth(User::class);
+
+// Attempt login
+if ($auth->attempt($_POST)) {
+    // Logged in! Auth::user() returns the User model
+    $user = $auth->user();
+    header('Location: /dashboard');
+} else {
+    echo 'Invalid credentials.';
+}
+
+// Check if logged in
+if ($auth->check()) {
+    echo 'Welcome back, ' . $auth->user()->name;
+}
+
+// Logout
+$auth->logout();</pre>
+
+                    <h5>In a controller</h5>
+                    <pre>class AuthController extends Controller
+{
+    public function login()
+    {
+        $data = $this->request()->only(['email', 'password']);
+
+        if ($this->auth()->attempt($data)) {
+            return $this->response()->redirect('/dashboard');
+        }
+
+        return $this->response()->back();
+    }
+
+    public function logout()
+    {
+        $this->auth()->logout();
+        return $this->response()->redirect('/');
+    }
+
+    public function profile()
+    {
+        if ($this->auth()->guest()) {
+            return $this->response()->redirect('/login');
+        }
+
+        $user = $this->auth()->user();
+        $this->loadView('profile', ['user' => $user]);
+    }
+}</pre>
+
+                    <h5>Auth methods</h5>
+                    <div class="overflow-auto">
+                        <table class="data-table data-table-bordered data-table-sm">
+                            <thead><tr><th>Method</th><th>Description</th></tr></thead>
+                            <tbody>
+                                <tr><td><code>$auth->attempt($credentials)</code></td><td>Attempt login with email/password. Returns bool.</td></tr>
+                                <tr><td><code>$auth->login($user)</code></td><td>Manually log in a user instance.</td></tr>
+                                <tr><td><code>$auth->logout()</code></td><td>Log out and regenerate session.</td></tr>
+                                <tr><td><code>$auth->user()</code></td><td>Get the authenticated user model (or null).</td></tr>
+                                <tr><td><code>$auth->check()</code></td><td>Returns true if a user is logged in.</td></tr>
+                                <tr><td><code>$auth->guest()</code></td><td>Returns true if no user is logged in.</td></tr>
+                                <tr><td><code>$auth->id()</code></td><td>Get the authenticated user's ID.</td></tr>
+                            </tbody>
+                        </table>
+                    </div>
+
+                    <p class="text-sm text-muted mt-3">Note: passwords are verified with <code>password_verify()</code>. Make sure to hash them with <code>password_hash()</code> when creating users.</p>
+                </div>
+            </div>
+        </section>
+
+        <!-- ============ ERROR HANDLING ============ -->
+        <section id="error-handling">
+            <h2 class="fw-bold mt-5 mb-3 pb-2 border-bottom">Error Handling</h2>
+            <div class="card mb-4">
+                <div class="card-body">
+                    <p>AuraPHP includes a built-in error handler that converts PHP errors into exceptions and renders a pretty HTML page with code context.</p>
+
+                    <h5>Features</h5>
+                    <ul>
+                        <li>Converts all PHP errors into <code>ErrorException</code></li>
+                        <li>Pretty HTML error page with source code highlighting</li>
+                        <li>Full stack trace with argument inspection</li>
+                        <li>CLI-friendly formatted output for command-line usage</li>
+                        <li>Shutdown handler catches fatal errors</li>
+                    </ul>
+
+                    <h5>Error page shows</h5>
+                    <ul>
+                        <li>Error class and message</li>
+                        <li>File and line number</li>
+                        <li>Source code snippet with the error line highlighted</li>
+                        <li>Full stack trace with each call's arguments</li>
+                    </ul>
+
+                    <p>The error handler is registered automatically in <code>index.php</code>. In production, set <code>false</code> to show a simple 500 page instead.</p>
+                </div>
+            </div>
+        </section>
+
+        <!-- ============ EVENTS ============ -->
+        <section id="events">
+            <h2 class="fw-bold mt-5 mb-3 pb-2 border-bottom">Events</h2>
+            <div class="card mb-4">
+                <div class="card-body">
+                    <p>The event system provides a simple pub/sub pattern for decoupled communication between components.</p>
+
+                    <h5>Listening to events</h5>
+                    <pre>use AuraCore\Event;
+
+// Register a listener
+Event::listen('user.registered', function ($user) {
+    // Send welcome email
+    // Log to analytics
+});
+
+Event::listen('user.registered', function ($user) {
+    // Award signup bonus
+});</pre>
+
+                    <h5>Dispatching events</h5>
+                    <pre>Event::dispatch('user.registered', [$user]);
+
+// Multiple arguments
+Event::dispatch('order.shipped', [$order, $trackingNumber]);</pre>
+
+                    <h5>Creating event classes</h5>
+                    <pre>php aura make:event UserRegistered</pre>
+                    <p>Events live in <code>site/events/</code>. They are plain PHP classes that hold data — the event system works with any class or data.</p>
+
+                    <h5>Creating listeners</h5>
+                    <pre>php aura make:listener SendWelcomeEmail</pre>
+                    <p>Listeners live in <code>site/listeners/</code>. Wire them up in your code with <code>Event::listen()</code>.</p>
+                </div>
+            </div>
+        </section>
+
+        <!-- ============ LOGGING ============ -->
+        <section id="logging">
+            <h2 class="fw-bold mt-5 mb-3 pb-2 border-bottom">Logging</h2>
+            <div class="card mb-4">
+                <div class="card-body">
+                    <p>The <code>Logger</code> class writes structured log entries to daily files in <code>storage/logs/</code>.</p>
+
+                    <h5>Basic usage</h5>
+                    <pre>use AuraCore\Logger;
+
+$logger = new Logger();
+
+$logger->info('User logged in', ['user_id' => 123]);
+$logger->error('Database connection failed', ['host' => $host]);
+$logger->warning('Disk space low', ['percent' => '92%']);
+$logger->critical('Application crashed');
+$logger->debug('SQL query executed', ['sql' => $sql]);</pre>
+
+                    <h5>Log levels</h5>
+                    <div class="d-flex gap-2 flex-wrap">
+                        <span class="badge bg-secondary">DEBUG</span>
+                        <span class="badge bg-info">INFO</span>
+                        <span class="badge bg-primary">NOTICE</span>
+                        <span class="badge bg-warning text-dark">WARNING</span>
+                        <span class="badge bg-danger">ERROR</span>
+                        <span class="badge bg-dark">CRITICAL</span>
+                    </div>
+
+                    <h5 class="mt-3">Log output</h5>
+                    <pre>[2026-06-01 14:30:00] INFO: User logged in {"user_id":123}
+[2026-06-01 14:31:15] ERROR: Database connection failed {"host":"localhost"}</pre>
+
+                    <p>Logs are stored in <code>storage/logs/YYYY-MM-DD.log</code>. Set minimum level via the constructor: <code>new Logger(null, 'WARNING')</code> to skip DEBUG and INFO messages.</p>
                 </div>
             </div>
         </section>
@@ -387,8 +1227,17 @@ $logs = $this-&gt;loadDatabase('logs');</pre>
                                 <tr><td><code>php aura serve</code></td><td>Start PHP dev server</td><td><code>php aura serve --port=3000</code></td></tr>
                                 <tr><td><code>php aura route:list</code></td><td>Display all routes</td><td><code>php aura route:list</code></td></tr>
                                 <tr><td><code>php aura make:controller</code></td><td>Generate a controller</td><td><code>php aura make:controller Product --resource</code></td></tr>
-                                <tr><td><code>php aura make:model</code></td><td>Generate a model</td><td><code>php aura make:model User</code></td></tr>
+                                <tr><td><code>php aura make:model</code></td><td>Generate an ActiveRecord model</td><td><code>php aura make:model User</code></td></tr>
+                                <tr><td><code>php aura make:migration</code></td><td>Generate a database migration</td><td><code>php aura make:migration create_users_table</code></td></tr>
+                                <tr><td><code>php aura migrate</code></td><td>Run all pending migrations</td><td><code>php aura migrate</code></td></tr>
+                                <tr><td><code>php aura migrate:rollback</code></td><td>Rollback the last migration batch</td><td><code>php aura migrate:rollback</code></td></tr>
+                                <tr><td><code>php aura make:seeder</code></td><td>Generate a database seeder</td><td><code>php aura make:seeder User</code></td></tr>
+                                <tr><td><code>php aura db:seed</code></td><td>Run all seeders</td><td><code>php aura db:seed</code></td></tr>
                                 <tr><td><code>php aura make:view</code></td><td>Generate a view</td><td><code>php aura make:view about</code></td></tr>
+                                <tr><td><code>php aura make:middleware</code></td><td>Generate a middleware class</td><td><code>php aura make:middleware Auth</code></td></tr>
+                                <tr><td><code>php aura make:event</code></td><td>Generate an event class</td><td><code>php aura make:event UserRegistered</code></td></tr>
+                                <tr><td><code>php aura make:listener</code></td><td>Generate an event listener</td><td><code>php aura make:listener SendEmail</code></td></tr>
+                                <tr><td><code>php aura make:request</code></td><td>Generate a form request class</td><td><code>php aura make:request StoreUser</code></td></tr>
                                 <tr><td><code>php aura key:generate</code></td><td>Generate APP_KEY in .env</td><td><code>php aura key:generate</code></td></tr>
                             </tbody>
                         </table>
@@ -401,11 +1250,11 @@ $logs = $this-&gt;loadDatabase('logs');</pre>
 #            edit($id), update($id), destroy($id)</pre>
 
                     <h5 class="mt-3"><code>make:model</code></h5>
-                    <p>Generates a model with built-in CRUD methods for a database table:</p>
+                    <p>Generates an ActiveRecord model that maps to a database table:</p>
                     <pre>php aura make:model User
-# Creates site/models/user_model.php with:
-# getAll(), getById($id), create($data),
-# update($id, $data), delete($id)</pre>
+# Creates site/models/user.php with ActiveRecord methods:
+# User::all(), User::find(1), User::where(...),
+# $user-&gt;save(), $user-&gt;delete(), etc.</pre>
 
                     <h5 class="mt-3"><code>route:list</code> output</h5>
                     <pre>Method  Path                Handler
@@ -609,8 +1458,26 @@ RewriteRule ^(.*)$ index.php/$1 [L]</pre>
                     <div class="card bg-light">
                         <div class="card-body">
                             <h5>Query database</h5>
-                            <div class="text-sm"><code>$db = $this->loadDatabase();<br>$db->get('table');</code></div>
+                            <div class="text-sm"><code>$db = $this-&gt;loadDatabase();<br>$db-&gt;table('users')-&gt;where('x', 1)-&gt;get();</code></div>
                         </div>
+                    </div>
+                </div>
+                <div class="col-md-4 mb-3">
+                    <div class="card bg-light">
+                        <div class="card-body">
+                            <h5>Find a model</h5>
+                            <div class="text-sm"><code>$user = User::find(1);<br>$users = User::where('active', 1)-&gt;get();</code></div>
+                        </div>
+                    </div>
+                </div>
+                <div class="col-md-4 mb-3">
+                    <div class="card bg-light">
+                        <div class="card-body">
+                            <h5>Run migrations</h5>
+                            <div class="text-sm"><code>php aura migrate</code></div>
+                        </div>
+                    </div>
+                </div>
                     </div>
                 </div>
                 <div class="col-md-4 mb-3">
@@ -630,7 +1497,34 @@ RewriteRule ^(.*)$ index.php/$1 [L]</pre>
 (function(){for(var e=document.querySelector("aside"),t=e.querySelectorAll('a[href^="#"]'),n=[],o=0;o<t.length;o++){var r=t[o].getAttribute("href").slice(1),l=document.getElementById(r);l&&n.push({id:r,el:l})}function i(){var e=window.scrollY+250,o="";n.forEach(function(t){t.el.offsetTop<=e&&(o=t.id)}),t.forEach(function(e){e.classList.toggle("active",e.getAttribute("href")==="#"+o)})}window.addEventListener("scroll",i,{passive:!0}),i()})();
 </script>
 <script>
-(function(){var t=localStorage.getItem("theme"),b=document.body;if(t&&t!=="theme-light"){b.classList.replace("theme-light","theme-dark");var i=document.getElementById("themeToggle");i&&(i.innerHTML="&#9788;")}})();function toggleTheme(){var e=document.body,i=document.getElementById("themeToggle");e.classList.toggle("theme-dark"),e.classList.toggle("theme-light");var n=e.classList.contains("theme-dark");localStorage.setItem("theme",n?"theme-dark":"theme-light"),i&&(i.innerHTML=n?"&#9788;":"&#9790;")}
+(function(){var t=localStorage.getItem("theme"),b=document.body;if(t&&t!=="theme-light"){b.classList.replace("theme-light","theme-dark");var i=document.getElementById("themeToggle");i&&(i.innerHTML="&#9788;")
+var s=document.getElementById("hljs-theme");s&&(s.href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/styles/github-dark.min.css")}})();function toggleTheme(){var e=document.body,i=document.getElementById("themeToggle");e.classList.toggle("theme-dark"),e.classList.toggle("theme-light");var n=e.classList.contains("theme-dark");localStorage.setItem("theme",n?"theme-dark":"theme-light"),i&&(i.innerHTML=n?"&#9788;":"&#9790;")
+var s=document.getElementById("hljs-theme");s&&(s.href=n?"https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/styles/github-dark.min.css":"https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/styles/github.min.css")}
+</script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/highlight.min.js"></script>
+<script>
+(function() {
+    function detectLang(text) {
+        if (/&lt;\?php|\$this-&gt;|\$db-&gt;|function\s+\w+|namespace\s+|use\s+(AuraCore|SiteControllers)/.test(text)) return 'php';
+        if (/&lt;!DOCTYPE|<html|<head|<body|<div|<a\s|<pre/.test(text)) return 'xml';
+        if (/(CREATE|SELECT|INSERT|UPDATE|DELETE|ALTER|DROP|TABLE|WHERE|FROM)\s/i.test(text)) return 'sql';
+        if (/^(composer|git|php\s(aura|artisan)|npm|cd\s)/.test(text.trim())) return 'bash';
+        if (/(function\s+\w+\s*\(|=>|const\s+\w+|require|module\.)/.test(text)) return 'javascript';
+        return 'plaintext';
+    }
+    document.querySelectorAll('pre').forEach(function(el) {
+        if (!el.querySelector('code')) {
+            var lang = el.getAttribute('data-lang') || detectLang(el.textContent);
+            el.setAttribute('data-lang', lang);
+            var code = document.createElement('code');
+            code.className = 'language-' + lang;
+            code.innerHTML = el.innerHTML;
+            el.innerHTML = '';
+            el.appendChild(code);
+        }
+    });
+    hljs.highlightAll();
+})();
 </script>
 <?php ownstrap_js(); ?>
 </body>
