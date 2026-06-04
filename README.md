@@ -35,6 +35,7 @@
 - [Server Configuration](#server-configuration)
 - [Configuration Reference](#configuration-reference)
 - [Environment File](#environment-file)
+- [AI & Credits](#ai--credits)
 - [License](#license)
 
 ---
@@ -1289,6 +1290,24 @@ This creates `.env` with an `APP_KEY`:
 ```
 APP_KEY=0123456789abcdef0123456789abcdef
 ```
+
+---
+
+## AI & Credits
+
+AuraPHP is an AI-built project, directed and partially hand-written by a human contributor.
+
+**The tool used to build this project is [OpenCode](https://opencode.ai)** — an open-source AI coding agent that runs in your terminal. OpenCode is the only AI tool used; no other AI assistant, IDE plugin, or coding service was involved. The bulk of the code, this README, and the documentation were produced by OpenCode operating on the project lead's prompts.
+
+### Human contributions
+
+The project lead ([@kernelk14](https://github.com/kernelk14)) made the following direct contributions alongside the AI-generated work:
+
+- **Wrote the first version of OwnStrap** — the original CSS/JS component library was hand-authored by the project lead before any AI assistance. The AI later modified, extended, and refined it into the current version.
+- **Contributed code in the project** — a number of files, helpers, design decisions, and bug fixes across the framework and the CLI came directly from the project lead, not from the AI.
+- **Wrote the prompting** — every line of AI output in this repository was directed by prompts authored by the project lead. The AI executed the work; the human specified what to build, gave feedback, reviewed diffs, and steered the iterations from start to finish.
+
+In short: the AI did the heavy lifting, but the project lead designed the system, wrote the original OwnStrap, contributed code directly, and guided the AI through every step of the build.
 
 ---
 
