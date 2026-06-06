@@ -1,14 +1,15 @@
 <?php
 $db = $this->db;
+$driver = $db ? $db->getDriver() : 'mysql';
+$pdo = $db ? $db->getPdo() : null;
 $migrationsDir = SITE_PATH . 'migrations';
 $migrations = [];
 $runMigrations = [];
 
 if ($db && is_dir($migrationsDir)) {
-    $pdo = $db->getPdo();
     try {
         $pdo->query("SELECT 1 FROM migrations LIMIT 1");
-        $stmt = $pdo->query("SELECT * FROM migrations ORDER BY migration");
+        $stmt = $pdo->query("SELECT migration, batch, executed_at FROM migrations ORDER BY migration");
         $runMigrations = $stmt->fetchAll(\PDO::FETCH_ASSOC);
         $runNames = array_column($runMigrations, 'migration');
     } catch (\Exception $e) { $runNames = []; }
@@ -67,23 +68,34 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 require_once $file;
                 $className = \AuraCore\Migration::resolveClass($base, $filename);
                 if (!$className || !class_exists($className)) continue;
+                $inTransaction = false;
                 try {
+                    if (!$pdo->inTransaction()) {
+                        $pdo->beginTransaction();
+                        $inTransaction = true;
+                    }
                     $mig = new $className();
                     $mig->setDb($db);
                     $mig->up();
                     $stmt = $pdo->prepare("INSERT INTO migrations (migration, batch) VALUES (?, ?)");
-                    $batch = $pdo->query("SELECT COALESCE(MAX(batch), 0) + 1 FROM migrations")->fetchColumn();
+                    $batch = (int) $pdo->query("SELECT COALESCE(MAX(batch), 0) + 1 FROM migrations")->fetchColumn();
                     $stmt->execute([$base, $batch]);
+                    if ($inTransaction) {
+                        $pdo->commit();
+                    }
                     $count++;
                 } catch (\Exception $e) {
+                    if ($inTransaction && $pdo->inTransaction()) {
+                        $pdo->rollBack();
+                    }
                     echo '<div class="alert alert-danger">' . htmlspecialchars($filename . ': ' . $e->getMessage()) . '</div>';
                 }
             }
             echo '<div class="alert alert-success">' . $count . ' migration(s) run.</div>';
         } elseif ($action === 'rollback') {
-            $stmt = $pdo->query("SELECT MAX(batch) FROM migrations");
-            $lastBatch = $stmt->fetchColumn();
-            if ($lastBatch) {
+            $stmt = $pdo->query("SELECT COALESCE(MAX(batch), 0) FROM migrations");
+            $lastBatch = (int) $stmt->fetchColumn();
+            if ($lastBatch > 0) {
                 $stmt = $pdo->prepare("SELECT migration FROM migrations WHERE batch = ? ORDER BY migration DESC");
                 $stmt->execute([$lastBatch]);
                 $toRollback = $stmt->fetchAll(\PDO::FETCH_COLUMN);
@@ -94,13 +106,24 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     require_once $file;
                     $className = \AuraCore\Migration::resolveClass($base, basename($file));
                     if (!$className || !class_exists($className)) continue;
+                    $inTransaction = false;
                     try {
+                        if (!$pdo->inTransaction()) {
+                            $pdo->beginTransaction();
+                            $inTransaction = true;
+                        }
                         $mig = new $className();
                         $mig->setDb($db);
                         $mig->down();
                         $pdo->prepare("DELETE FROM migrations WHERE migration = ?")->execute([$base]);
+                        if ($inTransaction) {
+                            $pdo->commit();
+                        }
                         $count++;
                     } catch (\Exception $e) {
+                        if ($inTransaction && $pdo->inTransaction()) {
+                            $pdo->rollBack();
+                        }
                         echo '<div class="alert alert-danger">' . htmlspecialchars($base . ': ' . $e->getMessage()) . '</div>';
                     }
                 }
@@ -141,8 +164,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                         <tr>
                             <td><?= htmlspecialchars($m['name']) ?></td>
                             <?php if ($m['run']): ?>
-                                <td><?= htmlspecialchars($m['run']['batch']) ?></td>
-                                <td><?= htmlspecialchars($m['run']['created_at'] ?? '-') ?></td>
+                                <td><?= htmlspecialchars((string) $m['run']['batch']) ?></td>
+                                <td><?= htmlspecialchars((string) ($m['run']['executed_at'] ?? '-')) ?></td>
                                 <td><span class="badge bg-success">Ran</span></td>
                             <?php else: ?>
                                 <td>-</td><td>-</td>

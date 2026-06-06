@@ -134,9 +134,9 @@ class Management
             $stmt = $pdo->prepare($sql);
             $stmt->execute();
 
-            $selectKeywords = ['SELECT', 'SHOW', 'DESCRIBE', 'EXPLAIN'];
+            $selectKeywords = ['SELECT', 'SHOW', 'DESCRIBE', 'EXPLAIN', 'PRAGMA', 'WITH'];
             $isSelect = false;
-            $upper = strtoupper(trim($sql));
+            $upper = strtoupper(ltrim($sql));
             foreach ($selectKeywords as $kw) {
                 if (strpos($upper, $kw) === 0) {
                     $isSelect = true;
@@ -157,7 +157,7 @@ class Management
                     foreach ($results as $row) {
                         echo '<tr>';
                         foreach ($row as $val) {
-                            echo '<td>' . htmlspecialchars((string)$val) . '</td>';
+                            echo '<td>' . htmlspecialchars((string) $val) . '</td>';
                         }
                         echo '</tr>';
                     }

@@ -2,6 +2,8 @@
 $db = $this->db;
 $action = $_GET['action'] ?? 'tables';
 $selectedTable = $_GET['tbl'] ?? '';
+$driver = $db ? $db->getDriver() : 'mysql';
+$pdo = $db ? $db->getPdo() : null;
 ?>
 <?php if (!$selectedTable): ?>
 <div class="tabs mb-4">
@@ -34,16 +36,52 @@ $selectedTable = $_GET['tbl'] ?? '';
 <?php elseif ($selectedTable): ?>
 
     <?php
-        $pdo = $db ? $db->getPdo() : null;
-        $columns = []; $rows = [];
+        $columns = []; $rows = []; $totalCount = 0; $tableExists = false;
         if ($pdo) {
+            $safeTable = str_replace(['"', "'", '`', ']'], '', $selectedTable);
             try {
-                $stmt = $pdo->query("DESCRIBE `" . str_replace('`', '``', $selectedTable) . "`");
-                $columns = $stmt->fetchAll(\PDO::FETCH_ASSOC);
-                $stmt = $pdo->query("SELECT COUNT(*) FROM `" . str_replace('`', '``', $selectedTable) . "`");
-                $totalCount = (int)$stmt->fetchColumn();
-                $stmt = $pdo->query("SELECT * FROM `" . str_replace('`', '``', $selectedTable) . "` LIMIT 100");
-                $rows = $stmt->fetchAll(\PDO::FETCH_ASSOC);
+                if ($driver === 'sqlite') {
+                    $stmt = $pdo->prepare("PRAGMA table_info(" . $pdo->quote($safeTable) . ")");
+                    $stmt->execute();
+                    $columns = $stmt->fetchAll(\PDO::FETCH_ASSOC);
+                    $tableExists = true;
+                    $countStmt = $pdo->prepare("SELECT COUNT(*) FROM " . $pdo->quote($safeTable));
+                    $countStmt->execute();
+                    $totalCount = (int) $countStmt->fetchColumn();
+                    $rowStmt = $pdo->prepare("SELECT * FROM " . $pdo->quote($safeTable) . " LIMIT 100");
+                    $rowStmt->execute();
+                    $rows = $rowStmt->fetchAll(\PDO::FETCH_ASSOC);
+                } elseif ($driver === 'pgsql') {
+                    $stmt = $pdo->prepare("SELECT column_name, data_type, is_nullable, column_default FROM information_schema.columns WHERE table_name = ?");
+                    $stmt->execute([$safeTable]);
+                    $columns = $stmt->fetchAll(\PDO::FETCH_ASSOC);
+                    $tableExists = true;
+                    $countStmt = $pdo->prepare("SELECT COUNT(*) FROM \"" . str_replace('"', '""', $safeTable) . "\"");
+                    $countStmt->execute();
+                    $totalCount = (int) $countStmt->fetchColumn();
+                    $rowStmt = $pdo->prepare("SELECT * FROM \"" . str_replace('"', '""', $safeTable) . "\" LIMIT 100");
+                    $rowStmt->execute();
+                    $rows = $rowStmt->fetchAll(\PDO::FETCH_ASSOC);
+                } elseif ($driver === 'sqlsrv' || $driver === 'mssql') {
+                    $stmt = $pdo->prepare("SELECT COLUMN_NAME, DATA_TYPE, IS_NULLABLE, COLUMN_DEFAULT FROM INFORMATION_SCHEMA.COLUMNS WHERE TABLE_NAME = ?");
+                    $stmt->execute([$safeTable]);
+                    $columns = $stmt->fetchAll(\PDO::FETCH_ASSOC);
+                    $tableExists = true;
+                    $countStmt = $pdo->prepare("SELECT COUNT(*) FROM [" . str_replace(']', ']]', $safeTable) . "]");
+                    $countStmt->execute();
+                    $totalCount = (int) $countStmt->fetchColumn();
+                    $rowStmt = $pdo->prepare("SELECT TOP 100 * FROM [" . str_replace(']', ']]', $safeTable) . "]");
+                    $rowStmt->execute();
+                    $rows = $rowStmt->fetchAll(\PDO::FETCH_ASSOC);
+                } else {
+                    $stmt = $pdo->query("DESCRIBE `" . str_replace('`', '``', $safeTable) . "`");
+                    $columns = $stmt->fetchAll(\PDO::FETCH_ASSOC);
+                    $tableExists = true;
+                    $stmt = $pdo->query("SELECT COUNT(*) FROM `" . str_replace('`', '``', $safeTable) . "`");
+                    $totalCount = (int) $stmt->fetchColumn();
+                    $stmt = $pdo->query("SELECT * FROM `" . str_replace('`', '``', $safeTable) . "` LIMIT 100");
+                    $rows = $stmt->fetchAll(\PDO::FETCH_ASSOC);
+                }
             } catch (\Exception $e) {
                 echo '<div class="alert alert-danger">' . htmlspecialchars($e->getMessage()) . '</div>';
             }
@@ -52,9 +90,7 @@ $selectedTable = $_GET['tbl'] ?? '';
     <div class="d-flex align-items-center gap-3 mb-4">
         <a href="/management/database" class="btn btn-sm btn-secondary">&larr; Tables</a>
         <h4 class="fw-bold mb-0"><?= htmlspecialchars($selectedTable) ?></h4>
-        <?php if (isset($totalCount)): ?>
-            <span class="badge bg-info"><?= number_format($totalCount) ?> rows</span>
-        <?php endif; ?>
+        <span class="badge bg-info"><?= number_format($totalCount) ?> rows</span>
     </div>
     <div class="row g-3">
         <div class="col-md-5">
@@ -95,14 +131,21 @@ $selectedTable = $_GET['tbl'] ?? '';
         </div>
         <?php
             $totalTableCount = 0;
+            $tables = [];
             if ($db) {
                 try {
-                    $stmt = $pdo->query("SHOW TABLE STATUS");
+                    if ($driver === 'sqlite') {
+                        $stmt = $pdo->query("SELECT name AS Name, 'sqlite' AS Engine, 0 AS Rows, 0 AS Data_length, 0 AS Index_length, '' AS Collation FROM sqlite_master WHERE type='table' AND name NOT LIKE 'sqlite_%'");
+                    } elseif ($driver === 'pgsql') {
+                        $stmt = $pdo->query("SELECT tablename AS Name, 'pgsql' AS Engine, 0 AS Rows, 0 AS Data_length, 0 AS Index_length, '' AS Collation FROM pg_tables WHERE schemaname = 'public'");
+                    } elseif ($driver === 'sqlsrv' || $driver === 'mssql') {
+                        $stmt = $pdo->query("SELECT TABLE_NAME AS Name, 'sqlsrv' AS Engine, 0 AS Rows, 0 AS Data_length, 0 AS Index_length, '' AS Collation FROM INFORMATION_SCHEMA.TABLES WHERE TABLE_TYPE = 'BASE TABLE'");
+                    } else {
+                        $stmt = $pdo->query("SHOW TABLE STATUS");
+                    }
                     $tables = $stmt->fetchAll(\PDO::FETCH_ASSOC);
                     $totalTableCount = count($tables);
                 } catch (\Exception $e) { $tables = []; }
-            } else {
-                $tables = [];
             }
         ?>
         <span class="text-muted text-xs"><?= $totalTableCount ?> table(s)</span>

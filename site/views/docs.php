@@ -67,35 +67,62 @@ php aura serve</pre>
             <div class="card mb-4">
                 <div class="card-body">
                     <pre>my-app/
-├── aura                    # CLI tool
-├── composer.json
-├── index.php               # Entry point
-├── .htaccess               # Apache rewrite rules
-├── public/
-│   ├── css/                # OwnStrap stylesheets
-│   ├── js/                 # OwnStrap JavaScript
-│   └── fonts/              # Inter & Fira Sans fonts
-├── site/
-│   ├── controllers/        # Your controllers
-│   ├── models/             # Your models
-│   ├── templates/          # Template partials
+├── aura                         # CLI tool (1,842-line single-file PHP)
+├── composer.json                # PSR-4 autoload + bin + scripts
+├── package.json                 # Frontend tooling metadata
+├── package-lock.json
+├── index.php                    # Front controller (161 lines)
+├── .htaccess                    # Apache rewrite → index.php
+├── .gitignore                   # Ignores node_modules, .env, *.log, .crush
+├── public/                      # Web-accessible assets
+│   ├── css/
+│   │   ├── ownstrap.css         # Main CSS framework (3,443 lines, ~85 KB)
+│   │   ├── ownstrap-colors.css  # Color palette (674 lines)
+│   │   └── fonts/               # Fira_Sans/ + Inter/ + JetBrainsMono/
+│   └── js/
+│       └── ownstrap.js          # OwnStrap JS class (1,152 lines, ~28 KB)
+├── system/                      # Framework core (don't edit)
+│   ├── core/                    # 25 AuraCore\ classes
+│   ├── config/                  # Edit these
+│   │   ├── config.php           # App config (base_url, etc.)
+│   │   ├── database.php         # Multi-connection DB config
+│   │   └── routes.php           # Route definitions
+│   ├── helpers/
+│   │   └── url_helper.php       # Global functions (autoloaded)
+│   └── installer-needs/
+│       └── PostInstall.php      # Composer post-install hook
+├── site/                        # Your application (M, V, C — edit freely)
+│   ├── controllers/             # SiteControllers\  (welcome.php, etc.)
+│   ├── models/                  # SiteModels\  (user_model.php, etc.)
+│   ├── views/                   # Plain PHP templates
+│   ├── templates/               # Reusable partials
+│   │   ├── navbar.php
 │   │   ├── sidebar-framework.php
 │   │   └── sidebar-ownstrap.php
-│   └── views/              # Your views
-└── system/
-    ├── core/               # Framework core (Router, Base, Database)
-    │   └── content-wrapper.php  # Base HTML layout
-    ├── config/             # Configuration (app, database, routes)
-    └── helpers/            # Global helper functions</pre>
+│   ├── events/                  # SiteEvents\  (event classes)
+│   ├── listeners/               # SiteListeners\  (event handlers)
+│   ├── middleware/              # SiteMiddleware\  (request middleware)
+│   ├── requests/                # SiteRequests\  (form-request validators)
+│   ├── rules/                   # SiteRules\  (custom validation rules)
+│   ├── scopes/                  # SiteScopes\  (model global scopes)
+│   ├── commands/                # SiteCommands\  (custom CLI commands)
+│   ├── providers/               # SiteProviders\  (service providers)
+│   └── pages/management/        # Built-in admin UI (8 pages)
+└── storage/
+    └── logs/                    # Logger writes YYYY-MM-DD.log files</pre>
+
+                    <div class="callout mt-3">
+                        <strong>No vendor/, no pre-existing .env:</strong> AuraPHP has <strong>zero Composer runtime dependencies</strong> — <code>composer.json</code> only registers the PSR-4 autoloader and the <code>aura</code> bin entry. A <code>.env</code> file is auto-created on first run via <code>php aura key:generate</code>.
+                    </div>
 
                     <div class="row mt-3">
                         <div class="col-md-6">
                             <h5><code>site/</code> — Your Application</h5>
-                            <p>All your application code goes here: controllers that handle logic, models that interact with the database, and views that render HTML.</p>
+                            <p>All your application code lives here. The <code>site/</code> subdirectories follow PSR-4 autoloading under the <code>SiteControllers\</code>, <code>SiteModels\</code>, <code>SiteEvents\</code>, etc. namespaces. The <code>pages/management/</code> subdirectory hosts the built-in admin UI (dashboard, database, env, info, logs, migrations, routes, seeders).</p>
                         </div>
                         <div class="col-md-6">
                             <h5><code>system/</code> — Framework Core</h5>
-                            <p>The framework files you generally don't modify. Contains the router, base classes, configuration, and helpers.</p>
+                            <p>The framework files you generally don't modify. Contains 25 <code>AuraCore\</code> classes (Router, Controller, Model, Database, Base, View, Logger, etc.), configuration loading, and global helper functions. Edit <code>system/config/</code> for app config — everything else is the engine.</p>
                         </div>
                     </div>
                 </div>

@@ -12,6 +12,7 @@ class Database extends Base
     protected $pdo;
     protected $driver;
     protected $config;
+    protected $lastAffectedRows = 0;
 
     public function __construct($config = null)
     {
@@ -31,6 +32,7 @@ class Database extends Base
 
         if ($driver === 'mysqli') {
             $driver = 'mysql';
+            $this->driver = 'mysql';
         }
 
         $dsn = $this->buildDsn($driver);
@@ -43,7 +45,19 @@ class Database extends Base
             PDO::ATTR_EMULATE_PREPARES => false,
         ];
 
-        $this->pdo = new PDO($dsn, $username, $password, $options);
+        if ($driver === 'mysql') {
+            $options[PDO::MYSQL_ATTR_INIT_COMMAND] = "SET NAMES " . ($this->config['charset'] ?? 'utf8');
+        }
+
+        try {
+            $this->pdo = new PDO($dsn, $username, $password, $options);
+        } catch (\PDOException $e) {
+            throw new \RuntimeException(
+                "Database connection failed for driver [{$driver}]: " . $e->getMessage(),
+                (int) $e->getCode(),
+                $e
+            );
+        }
     }
 
     protected function buildDsn($driver)
@@ -54,23 +68,37 @@ class Database extends Base
             case 'mysql':
                 $host = $config['host'] ?? '127.0.0.1';
                 $dbname = $config['database'] ?? '';
-                $charset = $config['charset'] ?? 'utf8';
+                $charset = $config['charset'] ?? 'utf8mb4';
                 $port = $config['port'] ?? 3306;
+                $unixSocket = $config['unix_socket'] ?? null;
+                if ($unixSocket) {
+                    return "mysql:unix_socket={$unixSocket};dbname={$dbname};charset={$charset}";
+                }
                 return "mysql:host={$host};port={$port};dbname={$dbname};charset={$charset}";
 
             case 'pgsql':
                 $host = $config['host'] ?? '127.0.0.1';
                 $dbname = $config['database'] ?? '';
                 $port = $config['port'] ?? 5432;
-                return "pgsql:host={$host};port={$port};dbname={$dbname}";
+                $dsn = "pgsql:host={$host};port={$port};dbname={$dbname}";
+                if (!empty($config['sslmode'])) {
+                    $dsn .= ";sslmode={$config['sslmode']}";
+                }
+                return $dsn;
 
             case 'sqlite':
-                return "sqlite:{$config['database']}";
+                $database = $config['database'] ?? ':memory:';
+                return "sqlite:" . $database;
 
             case 'sqlsrv':
                 $host = $config['host'] ?? '127.0.0.1';
                 $dbname = $config['database'] ?? '';
-                return "sqlsrv:Server={$host};Database={$dbname}";
+                $port = $config['port'] ?? 1433;
+                $dsn = "sqlsrv:Server={$host},{$port};Database={$dbname}";
+                if (!empty($config['encrypt'])) {
+                    $dsn .= ";Encrypt=" . ($config['encrypt'] ? 'true' : 'false');
+                }
+                return $dsn;
 
             default:
                 if (isset($config['dsn'])) {
@@ -85,27 +113,37 @@ class Database extends Base
         return $this->pdo;
     }
 
+    public function getDriver()
+    {
+        return $this->driver;
+    }
+
+    public function getConfig()
+    {
+        return $this->config;
+    }
+
     public function table($table)
     {
-        return new QueryBuilder($this->pdo, $table);
+        $qb = new QueryBuilder($this->pdo, $table);
+        $qb->setDatabase($this);
+        return $qb;
     }
 
-    public function query($sql)
-    {
-        if (func_num_args() > 1) {
-            $bindings = array_slice(func_get_args(), 1);
-            $stmt = $this->pdo->prepare($sql);
-            $stmt->execute($bindings);
-            return $stmt->fetchAll();
-        }
-
-        return $this->pdo->query($sql)->fetchAll();
-    }
-
-    public function statement($sql, $bindings = [])
+    public function query($sql, array $bindings = [])
     {
         $stmt = $this->pdo->prepare($sql);
-        return $stmt->execute($bindings);
+        $stmt->execute($bindings);
+        $this->lastAffectedRows = $stmt->rowCount();
+        return $stmt->fetchAll(PDO::FETCH_ASSOC);
+    }
+
+    public function statement($sql, array $bindings = [])
+    {
+        $stmt = $this->pdo->prepare($sql);
+        $stmt->execute($bindings);
+        $this->lastAffectedRows = $stmt->rowCount();
+        return $this->lastAffectedRows;
     }
 
     public function get($table)
@@ -156,7 +194,13 @@ class Database extends Base
 
     public function affectedRows()
     {
-        return $this->pdo->query('SELECT ROW_COUNT()')->fetchColumn();
+        return (int) $this->lastAffectedRows;
+    }
+
+    public function recordAffectedRows($count)
+    {
+        $this->lastAffectedRows = (int) $count;
+        return $this;
     }
 
     public function beginTransaction()
@@ -174,9 +218,30 @@ class Database extends Base
         return $this->pdo->rollBack();
     }
 
+    public function inTransaction()
+    {
+        return $this->pdo->inTransaction();
+    }
+
     public function raw($value)
     {
-        return new RawExpression($value);
+        if ($value instanceof RawExpression) {
+            return $value;
+        }
+        return new RawExpression((string) $value);
+    }
+
+    public function transaction(\Closure $callback)
+    {
+        $this->beginTransaction();
+        try {
+            $result = $callback($this);
+            $this->commit();
+            return $result;
+        } catch (\Exception $e) {
+            $this->rollBack();
+            throw $e;
+        }
     }
 }
 
@@ -190,6 +255,11 @@ class RawExpression
     }
 
     public function __toString()
+    {
+        return $this->value;
+    }
+
+    public function getValue()
     {
         return $this->value;
     }

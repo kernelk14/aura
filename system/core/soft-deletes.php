@@ -22,8 +22,16 @@ trait SoftDeletes
             return false;
         }
 
-        $this->attributes[static::$trashedColumn] = date('Y-m-d H:i:s');
+        if ($this->fireModelEvent('trashing') === false) {
+            return false;
+        }
+
+        $this->attributes[static::$trashedColumn] = $this->freshTimestamp();
         $result = $this->save();
+
+        if ($result) {
+            $this->fireModelEvent('trashed');
+        }
 
         return $result;
     }
@@ -34,22 +42,46 @@ trait SoftDeletes
             return false;
         }
 
-        $query = $this->newQuery();
+        if ($this->fireModelEvent('forceDeleting') === false) {
+            return false;
+        }
+
+        $query = $this->newQueryWithoutScopes();
         $result = $query->where($this->primaryKey, $this->getKey())->delete();
 
         $this->exists = false;
+
+        if ($result) {
+            $this->fireModelEvent('forceDeleted');
+        }
+
         return $result > 0;
     }
 
     public function restore()
     {
+        if (!$array_key_exists = array_key_exists(static::$trashedColumn, $this->attributes)) {
+            return false;
+        }
+
+        if ($this->fireModelEvent('restoring') === false) {
+            return false;
+        }
+
         $this->attributes[static::$trashedColumn] = null;
-        return $this->save();
+        $result = $this->save();
+
+        if ($result) {
+            $this->fireModelEvent('restored');
+        }
+
+        return $result;
     }
 
     public function trashed()
     {
-        return $this->attributes[static::$trashedColumn] !== null;
+        $value = $this->attributes[static::$trashedColumn] ?? null;
+        return $value !== null && $value !== '0000-00-00 00:00:00' && $value !== '';
     }
 
     public static function withTrashed()
@@ -71,5 +103,14 @@ trait SoftDeletes
         $query->whereNotNull("{$table}.{$column}");
 
         return $query;
+    }
+
+    protected function fireModelEvent($event)
+    {
+        $method = 'fire' . ucfirst($event) . 'Event';
+        if (method_exists($this, $method)) {
+            return $this->$method();
+        }
+        return true;
     }
 }

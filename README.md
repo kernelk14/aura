@@ -220,40 +220,49 @@ php aura --version
 
 ```
 my-app/
-├── aura                         # CLI tool
-├── public/
+├── aura                         # CLI tool (1,842-line single-file PHP)
+├── composer.json                # PSR-4 autoload + bin + scripts
+├── package.json                 # Frontend tooling metadata
+├── package-lock.json
+├── .htaccess                    # Apache rewrite → index.php
+├── .gitignore
+├── index.php                    # Front controller (161 lines)
+├── public/                      # Web-accessible assets
 │   ├── css/
-│   │   └── ownstrap.css         # Main CSS framework (~2609 lines)
-│   ├── js/
-│   │   └── ownstrap.js          # JavaScript library (~1154 lines)
-│   └── fonts/                   # Inter & Fira Sans fonts
-├── site/
-│   ├── controllers/             # Application controllers
-│   ├── models/                  # Application models
-│   ├── templates/               # Reusable template partials
-│   │   ├── sidebar-framework.php
-│   │   └── sidebar-ownstrap.php
-│   └── views/                   # Application views
-├── system/
-│   ├── core/
-│   │   ├── base.php             # Base class
-│   │   ├── content-wrapper.php    # Base HTML layout
-│   │   ├── controller.php       # Base controller
-│   │   ├── model.php            # Base model
-│   │   ├── router.php           # Router
-│   │   └── database.php         # Database + QueryBuilder
-│   ├── config/
-│   │   ├── config.php           # Application config
-│   │   ├── database.php         # Database connection config
-│   │   └── routes.php           # Route definitions
-│   └── helpers/
-│       └── url_helper.php       # Global helper functions
-├── vendor/                      # Composer dependencies
-├── composer.json
-├── index.php                    # Entry point
-├── .htaccess                    # Apache rewrite rules
-└── .env                         # Environment variables
+│   │   ├── ownstrap.css         # Main CSS framework (3,443 lines)
+│   │   ├── ownstrap-colors.css  # Color palette (674 lines)
+│   │   └── fonts/               # Fira_Sans/ + Inter/ + JetBrainsMono/
+│   └── js/
+│       └── ownstrap.js          # OwnStrap JS class (1,152 lines)
+├── system/                      # Framework core (don't edit)
+│   ├── core/                    # 25 AuraCore\ classes
+│   ├── config/                  # Edit these
+│   │   ├── config.php
+│   │   ├── database.php
+│   │   └── routes.php
+│   ├── helpers/
+│   │   └── url_helper.php
+│   └── installer-needs/
+│       └── PostInstall.php
+├── site/                        # Your application (M, V, C)
+│   ├── controllers/             # SiteControllers\
+│   ├── models/                  # SiteModels\
+│   ├── views/                   # Plain PHP templates
+│   ├── templates/               # Reusable partials
+│   ├── events/                  # SiteEvents\
+│   ├── listeners/               # SiteListeners\
+│   ├── middleware/              # SiteMiddleware\
+│   ├── requests/                # SiteRequests\
+│   ├── rules/                   # SiteRules\
+│   ├── scopes/                  # SiteScopes\
+│   ├── commands/                # SiteCommands\
+│   ├── providers/               # SiteProviders\
+│   └── pages/management/        # Built-in admin UI (8 pages)
+└── storage/
+    └── logs/                    # Logger writes YYYY-MM-DD.log files
 ```
+
+> **Note:** This project has **zero Composer runtime dependencies** — there's no `vendor/` directory. `composer.json` exists only to register the PSR-4 autoloader and the `aura` bin entry. A `.env` file is auto-created on first run via `php aura key:generate`.
 
 ---
 

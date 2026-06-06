@@ -7,6 +7,7 @@ use PDO;
 class QueryBuilder
 {
     protected $pdo;
+    protected $database;
     protected $table;
     protected $selects = ['*'];
     protected $wheres = [];
@@ -17,14 +18,28 @@ class QueryBuilder
     protected $limitValue;
     protected $offsetValue;
     protected $bindings = [];
+    protected $distinct = false;
     protected $modelClass;
     protected $primaryKey = 'id';
     protected $eagerLoads = [];
+    protected $driver;
 
     public function __construct(PDO $pdo, $table = null)
     {
         $this->pdo = $pdo;
         $this->table = $table;
+        $this->driver = $pdo->getAttribute(PDO::ATTR_DRIVER_NAME);
+    }
+
+    public function setDatabase($database)
+    {
+        $this->database = $database;
+        return $this;
+    }
+
+    public function getDriver()
+    {
+        return $this->driver;
     }
 
     public function table($table)
@@ -35,83 +50,132 @@ class QueryBuilder
 
     public function select($columns)
     {
-        $this->selects = is_array($columns) ? $columns : func_get_args();
+        $this->selects = is_array($columns) ? array_values($columns) : func_get_args();
+        return $this;
+    }
+
+    public function addSelect($columns)
+    {
+        $extra = is_array($columns) ? array_values($columns) : func_get_args();
+        $this->selects = array_merge($this->selects, $extra);
+        return $this;
+    }
+
+    public function distinct()
+    {
+        $this->distinct = true;
         return $this;
     }
 
     public function where($column, $operator = null, $value = null)
     {
-        if ($value === null) {
+        if (func_num_args() === 2) {
             $value = $operator;
             $operator = '=';
         }
 
-        $this->wheres[] = [
-            'type' => 'basic',
-            'column' => $column,
-            'operator' => $operator,
-            'value' => $value,
-            'boolean' => !empty($this->wheres) ? 'AND' : 'WHERE',
-        ];
+        if (is_array($value)) {
+            return $this->whereIn($column, $value, 'AND', $operator);
+        }
 
+        $this->wheres[] = $this->makeWhere('basic', $column, $operator, $value, 'AND');
         return $this;
     }
 
     public function orWhere($column, $operator = null, $value = null)
     {
-        if ($value === null) {
+        if (func_num_args() === 2) {
             $value = $operator;
             $operator = '=';
         }
 
-        $this->wheres[] = [
-            'type' => 'basic',
-            'column' => $column,
-            'operator' => $operator,
-            'value' => $value,
-            'boolean' => 'OR',
-        ];
+        if (is_array($value)) {
+            return $this->whereIn($column, $value, 'OR', $operator);
+        }
 
+        $this->wheres[] = $this->makeWhere('basic', $column, $operator, $value, 'OR');
         return $this;
     }
 
-    public function whereIn($column, array $values)
+    public function whereIn($column, array $values, $boolean = 'AND', $operator = '=')
     {
+        if (empty($values)) {
+            $this->wheres[] = [
+                'type' => 'raw',
+                'sql' => '1 = 0',
+                'boolean' => $this->resolveBoolean($boolean),
+                'bindings' => [],
+            ];
+            return $this;
+        }
+
         $this->wheres[] = [
             'type' => 'in',
             'column' => $column,
-            'values' => $values,
-            'boolean' => !empty($this->wheres) ? 'AND' : 'WHERE',
+            'values' => array_values($values),
+            'operator' => $operator === '=' ? 'IN' : 'NOT IN',
+            'boolean' => $this->resolveBoolean($boolean),
         ];
 
         return $this;
     }
 
-    public function whereNull($column)
+    public function whereNotIn($column, array $values)
+    {
+        return $this->whereIn($column, $values, 'AND', '!=');
+    }
+
+    public function orWhereIn($column, array $values)
+    {
+        return $this->whereIn($column, $values, 'OR');
+    }
+
+    public function whereNull($column, $boolean = 'AND')
     {
         $this->wheres[] = [
             'type' => 'null',
             'column' => $column,
-            'boolean' => !empty($this->wheres) ? 'AND' : 'WHERE',
+            'boolean' => $this->resolveBoolean($boolean),
         ];
-
         return $this;
     }
 
-    public function whereNotNull($column)
+    public function whereNotNull($column, $boolean = 'AND')
     {
         $this->wheres[] = [
             'type' => 'not_null',
             'column' => $column,
-            'boolean' => !empty($this->wheres) ? 'AND' : 'WHERE',
+            'boolean' => $this->resolveBoolean($boolean),
         ];
+        return $this;
+    }
 
+    public function whereBetween($column, array $values, $boolean = 'AND')
+    {
+        $this->wheres[] = [
+            'type' => 'between',
+            'column' => $column,
+            'values' => array_values($values),
+            'boolean' => $this->resolveBoolean($boolean),
+            'not' => false,
+        ];
+        return $this;
+    }
+
+    public function whereRaw($sql, array $bindings = [], $boolean = 'AND')
+    {
+        $this->wheres[] = [
+            'type' => 'raw',
+            'sql' => $sql,
+            'bindings' => $bindings,
+            'boolean' => $this->resolveBoolean($boolean),
+        ];
         return $this;
     }
 
     public function join($table, $first, $operator = null, $second = null, $type = 'INNER')
     {
-        if ($second === null) {
+        if (func_num_args() === 3) {
             $second = $operator;
             $operator = '=';
         }
@@ -132,7 +196,14 @@ class QueryBuilder
 
     public function orderBy($column, $direction = 'ASC')
     {
+        $direction = strtoupper($direction) === 'DESC' ? 'DESC' : 'ASC';
         $this->orderBys[] = compact('column', 'direction');
+        return $this;
+    }
+
+    public function orderByRaw($sql)
+    {
+        $this->orderBys[] = ['raw' => $sql];
         return $this;
     }
 
@@ -144,24 +215,29 @@ class QueryBuilder
 
     public function having($column, $operator = null, $value = null)
     {
-        if ($value === null) {
+        if (func_num_args() === 2) {
             $value = $operator;
             $operator = '=';
         }
 
-        $this->havings[] = compact('column', 'operator', 'value');
+        $this->havings[] = [
+            'type' => 'basic',
+            'column' => $column,
+            'operator' => $operator,
+            'value' => $value,
+        ];
         return $this;
     }
 
     public function limit($limit)
     {
-        $this->limitValue = $limit;
+        $this->limitValue = (int) $limit;
         return $this;
     }
 
     public function offset($offset)
     {
-        $this->offsetValue = $offset;
+        $this->offsetValue = (int) $offset;
         return $this;
     }
 
@@ -187,6 +263,11 @@ class QueryBuilder
         return $this;
     }
 
+    public function getModel()
+    {
+        return $this->modelClass;
+    }
+
     public function with(...$relations)
     {
         $this->eagerLoads = array_merge($this->eagerLoads, $relations);
@@ -204,26 +285,42 @@ class QueryBuilder
         return $this->where($this->primaryKey, $id)->first();
     }
 
+    public function value($column)
+    {
+        $row = $this->select($column)->first();
+        return $row ? ($row[$column] ?? null) : null;
+    }
+
+    public function pluck($column, $key = null)
+    {
+        $selects = $key ? [$column, $key] : [$column];
+        $results = $this->select($selects)->get();
+
+        if ($key) {
+            $map = [];
+            foreach ($results as $row) {
+                $map[$row[$key]] = $row[$column];
+            }
+            return $map;
+        }
+
+        return array_map(function ($row) use ($column) {
+            return $row[$column];
+        }, $results);
+    }
+
     public function first()
     {
-        $this->limit(1);
-        $results = $this->get();
+        $clone = $this->cloneForAggregate();
+        $clone->limit(1)->offset(0);
+        $results = $clone->runSelect();
+
         return !empty($results) ? $results[0] : null;
     }
 
     public function get()
     {
-        $sql = $this->compileSelect();
-        $stmt = $this->execute($sql);
-        $results = $stmt->fetchAll(PDO::FETCH_ASSOC);
-
-        if ($this->modelClass) {
-            $models = $this->hydrate($results);
-            $this->loadEagerRelations($models);
-            return $models;
-        }
-
-        return $results;
+        return $this->runSelect();
     }
 
     public function all()
@@ -231,29 +328,33 @@ class QueryBuilder
         return $this->get();
     }
 
-    public function count()
+    public function count($column = '*')
     {
-        return $this->aggregate('COUNT');
+        return (int) $this->aggregate('COUNT', $column);
     }
 
     public function sum($column)
     {
-        return $this->aggregate('SUM', $column);
+        $result = $this->aggregate('SUM', $column);
+        return $result === null ? 0 : (float) $result;
     }
 
     public function avg($column)
     {
-        return $this->aggregate('AVG', $column);
+        $result = $this->aggregate('AVG', $column);
+        return $result === null ? 0 : (float) $result;
     }
 
     public function min($column)
     {
-        return $this->aggregate('MIN', $column);
+        $result = $this->aggregate('MIN', $column);
+        return $result === null ? 0 : (float) $result;
     }
 
     public function max($column)
     {
-        return $this->aggregate('MAX', $column);
+        $result = $this->aggregate('MAX', $column);
+        return $result === null ? 0 : (float) $result;
     }
 
     public function exists()
@@ -276,12 +377,12 @@ class QueryBuilder
             return $this->insertBatch($data);
         }
 
-        $columns = '`' . implode('`, `', array_keys($data)) . '`';
+        $columns = implode(', ', array_map([$this, 'quoteColumn'], array_keys($data)));
         $placeholders = rtrim(str_repeat('?, ', count($data)), ', ');
 
-        $sql = "INSERT INTO `{$this->table}` ({$columns}) VALUES ({$placeholders})";
+        $sql = "INSERT INTO {$this->wrapTable($this->table)} ({$columns}) VALUES ({$placeholders})";
         $stmt = $this->pdo->prepare($sql);
-        $stmt->execute(array_values($data));
+        $stmt->execute($this->flattenValues($data));
 
         return (int) $this->pdo->lastInsertId();
     }
@@ -292,15 +393,18 @@ class QueryBuilder
             return false;
         }
 
-        $columns = '`' . implode('`, `', array_keys($data[0])) . '`';
-        $rowPlaceholders = '(' . rtrim(str_repeat('?, ', count($data[0])), ', ') . ')';
+        $first = $data[0];
+        $columns = implode(', ', array_map([$this, 'quoteColumn'], array_keys($first)));
+        $rowPlaceholders = '(' . rtrim(str_repeat('?, ', count($first)), ', ') . ')';
         $allPlaceholders = implode(', ', array_fill(0, count($data), $rowPlaceholders));
 
-        $sql = "INSERT INTO `{$this->table}` ({$columns}) VALUES {$allPlaceholders}";
+        $sql = "INSERT INTO {$this->wrapTable($this->table)} ({$columns}) VALUES {$allPlaceholders}";
 
         $values = [];
         foreach ($data as $row) {
-            $values = array_merge($values, array_values($row));
+            foreach ($row as $v) {
+                $values[] = $v;
+            }
         }
 
         $stmt = $this->pdo->prepare($sql);
@@ -312,20 +416,25 @@ class QueryBuilder
     public function update(array $data)
     {
         if (empty($data)) {
-            return false;
+            return 0;
         }
 
-        $sets = '';
+        $sets = [];
         $values = [];
         foreach ($data as $key => $value) {
-            $sets .= "`$key` = ?, ";
+            $sets[] = "{$this->quoteColumn($key)} = ?";
             $values[] = $value;
         }
-        $sets = rtrim($sets, ', ');
+        $sets = implode(', ', $sets);
 
-        $sql = "UPDATE `{$this->table}` SET {$sets}";
-        $sql .= $this->compileWheres();
-        $values = array_merge($values, $this->getWhereBindings());
+        $sql = "UPDATE {$this->wrapTable($this->table)} SET {$sets}";
+        $whereSql = $this->compileWheres();
+        if ($whereSql !== '') {
+            $sql .= $whereSql;
+        } else {
+            throw new \RuntimeException('Update query must have a where clause to prevent accidental mass updates.');
+        }
+        $values = array_merge($values, $this->bindings);
 
         $stmt = $this->execute($sql, $values);
         return $stmt->rowCount();
@@ -333,33 +442,51 @@ class QueryBuilder
 
     public function delete()
     {
-        $sql = "DELETE FROM `{$this->table}`";
-        $sql .= $this->compileWheres();
-        $values = $this->getWhereBindings();
+        $sql = "DELETE FROM {$this->wrapTable($this->table)}";
+        $whereSql = $this->compileWheres();
+        if ($whereSql === '') {
+            throw new \RuntimeException('Delete query must have a where clause to prevent accidental mass deletion.');
+        }
+        $sql .= $whereSql;
 
-        $stmt = $this->execute($sql, $values);
+        $stmt = $this->execute($sql, $this->bindings);
         return $stmt->rowCount();
     }
 
     public function truncate()
     {
-        $sql = "TRUNCATE TABLE `{$this->table}`";
+        $sql = $this->driver === 'sqlite'
+            ? "DELETE FROM {$this->wrapTable($this->table)}"
+            : "TRUNCATE TABLE {$this->wrapTable($this->table)}";
+
+        if ($this->driver === 'sqlite') {
+            $stmt = $this->pdo->prepare($sql);
+            $stmt->execute();
+            $this->pdo->exec("DELETE FROM sqlite_sequence WHERE name = " . $this->pdo->quote($this->table));
+            return $stmt->rowCount();
+        }
+
         return $this->pdo->exec($sql);
     }
 
-    public function paginate($perPage = 15, $page = null)
+    public function paginate($perPage = 15, $page = null, $baseUrl = null)
     {
-        $page = $page ?: (isset($_GET['page']) ? (int) $_GET['page'] : 1);
-        $total = $this->count();
-        $lastPage = (int) ceil($total / $perPage);
-        $page = max(1, min($page, $lastPage > 0 ? $lastPage : 1));
+        $page = $page !== null ? (int) $page : (int) ($_GET['page'] ?? 1);
+        $page = max(1, $page);
 
-        $this->limit($perPage);
-        $this->offset(($page - 1) * $perPage);
+        $total = $this->countForPagination();
+        $perPage = max(1, (int) $perPage);
+        $lastPage = $total > 0 ? (int) ceil($total / $perPage) : 1;
+        if ($page > $lastPage) {
+            $page = $lastPage;
+        }
 
-        $items = $this->get();
+        $items = $this->cloneForAggregate()
+            ->limit($perPage)
+            ->offset(($page - 1) * $perPage)
+            ->get();
 
-        return new Pagination($items, $total, $perPage, $page);
+        return new Pagination($items, (int) $total, $perPage, $page, $baseUrl);
     }
 
     public function toSql()
@@ -377,13 +504,27 @@ class QueryBuilder
         $qb = new self($this->pdo, $this->table);
         $qb->modelClass = $this->modelClass;
         $qb->primaryKey = $this->primaryKey;
+        $qb->driver = $this->driver;
+        $qb->database = $this->database;
         return $qb;
+    }
+
+    public function raw($value)
+    {
+        if ($value instanceof RawExpression) {
+            return $value;
+        }
+        return new RawExpression((string) $value);
     }
 
     protected function compileSelect()
     {
-        $columns = implode(', ', $this->selects);
-        $sql = "SELECT {$columns} FROM `{$this->table}`";
+        $distinct = $this->distinct ? 'DISTINCT ' : '';
+        $columns = empty($this->selects) || (count($this->selects) === 1 && $this->selects[0] === '*')
+            ? '*'
+            : implode(', ', $this->selects);
+
+        $sql = "SELECT {$distinct}{$columns} FROM {$this->wrapTable($this->table)}";
 
         $sql .= $this->compileJoins();
         $sql .= $this->compileWheres();
@@ -396,11 +537,22 @@ class QueryBuilder
         return $sql;
     }
 
+    protected function compileCountSelect()
+    {
+        $sql = "SELECT COUNT(*) AS aggregate FROM {$this->wrapTable($this->table)}";
+        $sql .= $this->compileJoins();
+        $sql .= $this->compileWheres();
+        return $sql;
+    }
+
     protected function compileJoins()
     {
+        if (empty($this->joins)) {
+            return '';
+        }
         $sql = '';
         foreach ($this->joins as $join) {
-            $sql .= " {$join['type']} JOIN `{$join['table']}` ON {$join['first']} {$join['operator']} {$join['second']}";
+            $sql .= " {$join['type']} JOIN {$this->wrapTable($join['table'])} ON {$join['first']} {$join['operator']} {$join['second']}";
         }
         return $sql;
     }
@@ -411,30 +563,45 @@ class QueryBuilder
             return '';
         }
 
-        $sql = '';
         $this->bindings = [];
 
+        $sql = '';
         foreach ($this->wheres as $i => $where) {
-            $boolean = $i === 0 ? 'WHERE' : $where['boolean'];
+            $boolean = $i === 0 ? 'WHERE' : ($where['boolean'] ?? 'AND');
 
             switch ($where['type']) {
                 case 'basic':
-                    $sql .= " {$boolean} `{$where['column']}` {$where['operator']} ?";
+                    $sql .= " {$boolean} {$this->quoteColumn($where['column'])} {$where['operator']} ?";
                     $this->bindings[] = $where['value'];
                     break;
 
                 case 'in':
                     $placeholders = rtrim(str_repeat('?, ', count($where['values'])), ', ');
-                    $sql .= " {$boolean} `{$where['column']}` IN ({$placeholders})";
-                    $this->bindings = array_merge($this->bindings, $where['values']);
+                    $sql .= " {$boolean} {$this->quoteColumn($where['column'])} {$where['operator']} ({$placeholders})";
+                    foreach ($where['values'] as $v) {
+                        $this->bindings[] = $v;
+                    }
                     break;
 
                 case 'null':
-                    $sql .= " {$boolean} `{$where['column']}` IS NULL";
+                    $sql .= " {$boolean} {$this->quoteColumn($where['column'])} IS NULL";
                     break;
 
                 case 'not_null':
-                    $sql .= " {$boolean} `{$where['column']}` IS NOT NULL";
+                    $sql .= " {$boolean} {$this->quoteColumn($where['column'])} IS NOT NULL";
+                    break;
+
+                case 'between':
+                    $sql .= " {$boolean} {$this->quoteColumn($where['column'])} BETWEEN ? AND ?";
+                    $this->bindings[] = $where['values'][0] ?? null;
+                    $this->bindings[] = $where['values'][1] ?? null;
+                    break;
+
+                case 'raw':
+                    $sql .= " {$boolean} ({$where['sql']})";
+                    foreach ($where['bindings'] as $b) {
+                        $this->bindings[] = $b;
+                    }
                     break;
             }
         }
@@ -458,7 +625,12 @@ class QueryBuilder
 
         $clauses = [];
         foreach ($this->havings as $having) {
-            $clauses[] = "{$having['column']} {$having['operator']} ?";
+            if (($having['type'] ?? 'basic') === 'raw') {
+                $clauses[] = $having['sql'];
+            } else {
+                $clauses[] = "{$having['column']} {$having['operator']} ?";
+                $this->bindings[] = $having['value'];
+            }
         }
 
         return ' HAVING ' . implode(' AND ', $clauses);
@@ -472,7 +644,11 @@ class QueryBuilder
 
         $clauses = [];
         foreach ($this->orderBys as $order) {
-            $clauses[] = "{$order['column']} {$order['direction']}";
+            if (isset($order['raw'])) {
+                $clauses[] = $order['raw'];
+            } else {
+                $clauses[] = "{$this->quoteColumn($order['column'])} {$order['direction']}";
+            }
         }
 
         return ' ORDER BY ' . implode(', ', $clauses);
@@ -481,6 +657,10 @@ class QueryBuilder
     protected function compileLimit()
     {
         if ($this->limitValue === null) {
+            return '';
+        }
+
+        if ($this->driver === 'sqlsrv' || $this->driver === 'mssql') {
             return '';
         }
 
@@ -494,39 +674,172 @@ class QueryBuilder
             return '';
         }
 
+        if ($this->driver === 'sqlsrv' || $this->driver === 'mssql') {
+            $start = (int) $this->offsetValue + 1;
+            $end = $start + (int) $this->limitValue - 1;
+            $this->limitValue = null;
+            return " OFFSET {$start} ROWS FETCH NEXT {$end} ROWS ONLY";
+        }
+
         $this->bindings[] = $this->offsetValue;
         return ' OFFSET ?';
     }
 
-    protected function getWhereBindings()
-    {
-        $bindings = [];
-        foreach ($this->wheres as $where) {
-            switch ($where['type']) {
-                case 'basic':
-                    $bindings[] = $where['value'];
-                    break;
-                case 'in':
-                    $bindings = array_merge($bindings, $where['values']);
-                    break;
-            }
-        }
-        if ($this->limitValue !== null) {
-            $bindings[] = $this->limitValue;
-        }
-        if ($this->offsetValue !== null) {
-            $bindings[] = $this->offsetValue;
-        }
-        return $bindings;
-    }
-
     protected function aggregate($function, $column = '*')
     {
-        $this->selects = ["{$function}({$column}) as aggregate"];
-        $sql = $this->compileSelect();
-        $stmt = $this->execute($sql);
+        $column = $column === '*' ? '*' : $this->quoteColumn($column);
+        $sql = "SELECT {$function}({$column}) AS aggregate FROM {$this->wrapTable($this->table)}";
+        $sql .= $this->compileJoins();
+        $sql .= $this->compileWheres();
+
+        $stmt = $this->execute($sql, $this->bindings);
         $result = $stmt->fetch(PDO::FETCH_ASSOC);
-        return $result ? (int) $result['aggregate'] : 0;
+        $value = $result['aggregate'] ?? null;
+
+        $this->bindings = [];
+        return $value;
+    }
+
+    protected function countForPagination()
+    {
+        $clone = $this->cloneForAggregate();
+        $clone->selects = [];
+        $clone->orderBys = [];
+        $clone->groupBys = [];
+        $clone->havings = [];
+        $clone->limitValue = null;
+        $clone->offsetValue = null;
+        $clone->eagerLoads = [];
+
+        $sql = "SELECT COUNT(*) AS aggregate FROM {$this->wrapTable($clone->table)}";
+        $sql .= $clone->compileJoins();
+        $sql .= $clone->compileWheres();
+        $sql .= $clone->compileGroupBys();
+        $sql .= $clone->compileHavings();
+
+        $stmt = $this->pdo->prepare($sql);
+        $stmt->execute($clone->bindings);
+        $row = $stmt->fetch(PDO::FETCH_ASSOC);
+
+        if ($clone->groupBys || $clone->havings) {
+            return $stmt->rowCount();
+        }
+        return (int) ($row['aggregate'] ?? 0);
+    }
+
+    protected function runSelect()
+    {
+        $sql = $this->compileSelect();
+        $stmt = $this->execute($sql, $this->bindings);
+        $results = $stmt->fetchAll(PDO::FETCH_ASSOC);
+
+        if ($this->modelClass) {
+            $models = $this->hydrate($results);
+            $this->loadEagerRelations($models);
+            return $models;
+        }
+
+        return $results;
+    }
+
+    protected function cloneForAggregate()
+    {
+        $clone = clone $this;
+        $clone->selects = $this->selects;
+        $clone->eagerLoads = [];
+        return $clone;
+    }
+
+    protected function makeWhere($type, $column, $operator, $value, $boolean)
+    {
+        return [
+            'type' => $type,
+            'column' => $column,
+            'operator' => $operator,
+            'value' => $value,
+            'boolean' => $this->resolveBoolean($boolean),
+        ];
+    }
+
+    protected function resolveBoolean($boolean)
+    {
+        $b = strtoupper((string) $boolean);
+        return $b === 'OR' ? 'OR' : 'AND';
+    }
+
+    protected function wrapTable($table)
+    {
+        if ($table === null) {
+            throw new \RuntimeException('No table specified for query.');
+        }
+        if ($table instanceof RawExpression) {
+            return (string) $table;
+        }
+        if (strpos($table, '.') !== false) {
+            $parts = explode('.', $table);
+            return implode('.', array_map([$this, 'quoteTable'], $parts));
+        }
+        if (strpos($table, ' ') !== false) {
+            $parts = preg_split('/\s+/', $table, 2);
+            return $this->quoteTable($parts[0]) . ' ' . $parts[1];
+        }
+        return $this->quoteTable($table);
+    }
+
+    protected function quoteTable($table)
+    {
+        if ($this->driver === 'mysql' || $this->driver === 'sqlite' || $this->driver === 'pgsql') {
+            return '"' . str_replace('"', '""', $table) . '"';
+        }
+        if ($this->driver === 'sqlsrv' || $this->driver === 'mssql') {
+            return '[' . str_replace(']', ']]', $table) . ']';
+        }
+        return $table;
+    }
+
+    protected function quoteColumn($column)
+    {
+        if ($column instanceof RawExpression) {
+            return (string) $column;
+        }
+        if (strpos($column, '(') !== false && strpos($column, ')') !== false) {
+            return $column;
+        }
+        if (strpos($column, '.') !== false) {
+            $parts = explode('.', $column);
+            $last = array_pop($parts);
+            $prefix = implode('.', $parts);
+            return $prefix . '.' . $this->quoteSingleColumn($last);
+        }
+        if (strpos($column, ' ') !== false) {
+            $parts = preg_split('/\s+/', $column, 2);
+            return $this->quoteSingleColumn($parts[0]) . ' ' . $parts[1];
+        }
+        if (in_array(strtoupper($column), ['*', 'COUNT(*)', 'COUNT(*) AS AGGREGATE'], true)) {
+            return $column;
+        }
+        return $this->quoteSingleColumn($column);
+    }
+
+    protected function quoteSingleColumn($column)
+    {
+        $column = trim($column);
+        if ($column === '*') {
+            return '*';
+        }
+        if ($this->driver === 'sqlsrv' || $this->driver === 'mssql') {
+            return '[' . str_replace(']', ']]', $column) . ']';
+        }
+        return '"' . str_replace('"', '""', $column) . '"';
+    }
+
+    protected function flattenValues(array $data)
+    {
+        $values = [];
+        foreach ($data as $v) {
+            $values[] = $v;
+        }
+        return $values;
     }
 
     protected function execute($sql, $bindings = null)
@@ -537,6 +850,11 @@ class QueryBuilder
 
         $stmt = $this->pdo->prepare($sql);
         $stmt->execute($bindings);
+
+        if ($this->database !== null) {
+            $this->database->recordAffectedRows($stmt->rowCount());
+        }
+
         return $stmt;
     }
 
@@ -587,11 +905,16 @@ class QueryBuilder
                 $localKeys = array_map(function ($m) use ($meta) {
                     return $m->getAttribute($meta['localKey']);
                 }, $models);
-                $localKeys = array_unique(array_filter($localKeys));
+                $localKeys = array_values(array_unique(array_filter($localKeys, function ($v) {
+                    return $v !== null;
+                })));
 
                 if (empty($localKeys)) break;
 
-                $results = $relatedInstance->whereIn($meta['foreignKey'], $localKeys)->get();
+                $results = $relatedInstance->newQuery()
+                    ->setModel($relatedClass)
+                    ->whereIn($meta['foreignKey'], $localKeys)
+                    ->get();
 
                 $grouped = [];
                 foreach ($results as $related) {
@@ -613,11 +936,16 @@ class QueryBuilder
                 $foreignKeys = array_map(function ($m) use ($meta) {
                     return $m->getAttribute($meta['foreignKey']);
                 }, $models);
-                $foreignKeys = array_unique(array_filter($foreignKeys));
+                $foreignKeys = array_values(array_unique(array_filter($foreignKeys, function ($v) {
+                    return $v !== null;
+                })));
 
                 if (empty($foreignKeys)) break;
 
-                $results = $relatedInstance->whereIn($meta['localKey'], $foreignKeys)->get();
+                $results = $relatedInstance->newQuery()
+                    ->setModel($relatedClass)
+                    ->whereIn($meta['localKey'], $foreignKeys)
+                    ->get();
 
                 $keyed = [];
                 foreach ($results as $related) {

@@ -9,14 +9,21 @@ class Pagination
     protected $perPage;
     protected $currentPage;
     protected $lastPage;
+    protected $baseUrl;
 
-    public function __construct($items, $total, $perPage, $currentPage)
+    public function __construct($items, $total, $perPage, $currentPage, $baseUrl = null)
     {
         $this->items = $items;
-        $this->total = $total;
-        $this->perPage = $perPage;
-        $this->currentPage = $currentPage;
-        $this->lastPage = (int) ceil($total / $perPage);
+        $this->total = (int) $total;
+        $this->perPage = max(1, (int) $perPage);
+        $this->currentPage = max(1, (int) $currentPage);
+        $this->lastPage = $this->perPage > 0
+            ? (int) max(1, ceil($this->total / $this->perPage))
+            : 1;
+        if ($this->currentPage > $this->lastPage) {
+            $this->currentPage = $this->lastPage;
+        }
+        $this->baseUrl = $baseUrl;
     }
 
     public function items()
@@ -59,20 +66,26 @@ class Pagination
         return $this->currentPage <= 1;
     }
 
+    public function previousPage()
+    {
+        return $this->currentPage > 1 ? $this->currentPage - 1 : null;
+    }
+
+    public function nextPage()
+    {
+        return $this->hasMorePages() ? $this->currentPage + 1 : null;
+    }
+
     public function previousPageUrl()
     {
-        if ($this->onFirstPage()) {
-            return null;
-        }
-        return $this->buildUrl($this->currentPage - 1);
+        $page = $this->previousPage();
+        return $page === null ? null : $this->url($page);
     }
 
     public function nextPageUrl()
     {
-        if ($this->hasMorePages()) {
-            return $this->buildUrl($this->currentPage + 1);
-        }
-        return null;
+        $page = $this->nextPage();
+        return $page === null ? null : $this->url($page);
     }
 
     public function url($page)
@@ -92,16 +105,34 @@ class Pagination
         $html = '<nav><ul class="pagination">';
 
         if (!$this->onFirstPage()) {
-            $html .= '<li class="page-item"><a class="page-link" href="' . $this->previousPageUrl() . '">&laquo; Previous</a></li>';
+            $html .= '<li class="page-item"><a class="page-link" href="' . htmlspecialchars((string) $this->previousPageUrl()) . '">&laquo; Previous</a></li>';
         }
 
-        for ($i = 1; $i <= $this->lastPage; $i++) {
+        $window = 2;
+        $start = max(1, $this->currentPage - $window);
+        $end = min($this->lastPage, $this->currentPage + $window);
+
+        if ($start > 1) {
+            $html .= '<li class="page-item"><a class="page-link" href="' . htmlspecialchars((string) $this->url(1)) . '">1</a></li>';
+            if ($start > 2) {
+                $html .= '<li class="page-item disabled"><span class="page-link">&hellip;</span></li>';
+            }
+        }
+
+        for ($i = $start; $i <= $end; $i++) {
             $active = $i === $this->currentPage ? ' active' : '';
-            $html .= '<li class="page-item' . $active . '"><a class="page-link" href="' . $this->url($i) . '">' . $i . '</a></li>';
+            $html .= '<li class="page-item' . $active . '"><a class="page-link" href="' . htmlspecialchars((string) $this->url($i)) . '">' . $i . '</a></li>';
+        }
+
+        if ($end < $this->lastPage) {
+            if ($end < $this->lastPage - 1) {
+                $html .= '<li class="page-item disabled"><span class="page-link">&hellip;</span></li>';
+            }
+            $html .= '<li class="page-item"><a class="page-link" href="' . htmlspecialchars((string) $this->url($this->lastPage)) . '">' . $this->lastPage . '</a></li>';
         }
 
         if ($this->hasMorePages()) {
-            $html .= '<li class="page-item"><a class="page-link" href="' . $this->nextPageUrl() . '">Next &raquo;</a></li>';
+            $html .= '<li class="page-item"><a class="page-link" href="' . htmlspecialchars((string) $this->nextPageUrl()) . '">Next &raquo;</a></li>';
         }
 
         $html .= '</ul></nav>';
@@ -111,6 +142,7 @@ class Pagination
     public function toArray()
     {
         return [
+            'data' => $this->items,
             'items' => $this->items,
             'total' => $this->total,
             'per_page' => $this->perPage,
@@ -118,13 +150,26 @@ class Pagination
             'last_page' => $this->lastPage,
             'has_pages' => $this->hasPages(),
             'has_more' => $this->hasMorePages(),
+            'prev_page_url' => $this->previousPageUrl(),
+            'next_page_url' => $this->nextPageUrl(),
         ];
     }
 
     protected function buildUrl($page)
     {
-        $params = $_GET;
-        $params['page'] = $page;
-        return '?' . http_build_query($params);
+        if ($this->baseUrl !== null) {
+            $separator = strpos($this->baseUrl, '?') === false ? '?' : '&';
+            return $this->baseUrl . $separator . 'page=' . $page;
+        }
+
+        $uri = $_SERVER['REQUEST_URI'] ?? '';
+        $parts = parse_url($uri);
+        $query = [];
+        if (isset($parts['query'])) {
+            parse_str($parts['query'], $query);
+        }
+        $query['page'] = $page;
+        $path = $parts['path'] ?? '/';
+        return $path . '?' . http_build_query($query);
     }
 }

@@ -4,6 +4,8 @@
 define('AURA_ROOT', __DIR__);
 define('AURA_SYSTEM', AURA_ROOT . '/system');
 define('AURA_SITE', AURA_ROOT . '/site');
+define('SYSTEM_PATH', AURA_ROOT . '/system/');
+define('SITE_PATH', AURA_ROOT . '/site/');
 
 $version = '1.2.0';
 
@@ -236,6 +238,7 @@ function db_bootstrap() {
     require_once AURA_SYSTEM . '/core/database.php';
     require_once AURA_SYSTEM . '/core/query-builder.php';
     require_once AURA_SYSTEM . '/core/schema.php';
+    require_once AURA_SYSTEM . '/core/migration.php';
     return new AuraCore\Database();
 }
 
@@ -244,6 +247,93 @@ function migration_class($filename) {
     $name = preg_replace('/\.php$/', '', $name);
     $class = 'Migration_' . studlyCase($name);
     return str_replace('-', '_', $class);
+}
+
+function db_driver() {
+    static $driver = null;
+    if ($driver === null) {
+        try {
+            $db = db_bootstrap();
+            $driver = $db->getDriver();
+        } catch (\Exception $e) {
+            $driver = 'mysql';
+        }
+    }
+    return $driver;
+}
+
+function db_quoted($name) {
+    $driver = db_driver();
+    if ($driver === 'sqlsrv' || $driver === 'mssql') {
+        return '[' . str_replace(']', ']]', $name) . ']';
+    }
+    return '"' . str_replace('"', '""', $name) . '"';
+}
+
+function ensure_migrations_table($pdo, $driver) {
+    $table = db_quoted('migrations');
+    if ($driver === 'sqlite') {
+        $pdo->exec("CREATE TABLE IF NOT EXISTS {$table} (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            migration VARCHAR(255) NOT NULL,
+            batch INTEGER NOT NULL,
+            executed_at TEXT DEFAULT CURRENT_TIMESTAMP
+        )");
+    } elseif ($driver === 'pgsql') {
+        $pdo->exec("CREATE TABLE IF NOT EXISTS {$table} (
+            id SERIAL PRIMARY KEY,
+            migration VARCHAR(255) NOT NULL,
+            batch INTEGER NOT NULL,
+            executed_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        )");
+    } elseif ($driver === 'sqlsrv' || $driver === 'mssql') {
+        $pdo->exec("IF NOT EXISTS (SELECT * FROM sysobjects WHERE name='migrations' AND xtype='U')
+            CREATE TABLE migrations (
+                id INT IDENTITY(1,1) PRIMARY KEY,
+                migration VARCHAR(255) NOT NULL,
+                batch INT NOT NULL,
+                executed_at DATETIME DEFAULT GETDATE()
+            )");
+    } else {
+        $pdo->exec("CREATE TABLE IF NOT EXISTS {$table} (
+            `id` INT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+            `migration` VARCHAR(255) NOT NULL,
+            `batch` INT UNSIGNED NOT NULL,
+            `executed_at` TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        )");
+    }
+}
+
+function list_tables($pdo, $driver) {
+    if ($driver === 'sqlite') {
+        $stmt = $pdo->query("SELECT name FROM sqlite_master WHERE type='table' AND name NOT LIKE 'sqlite_%'");
+    } elseif ($driver === 'pgsql') {
+        $stmt = $pdo->query("SELECT tablename FROM pg_tables WHERE schemaname = 'public'");
+    } elseif ($driver === 'sqlsrv' || $driver === 'mssql') {
+        $stmt = $pdo->query("SELECT TABLE_NAME FROM INFORMATION_SCHEMA.TABLES WHERE TABLE_TYPE = 'BASE TABLE'");
+    } else {
+        $stmt = $pdo->query("SHOW TABLES");
+    }
+    return $stmt->fetchAll(\PDO::FETCH_COLUMN);
+}
+
+function fetch_max_batch($pdo) {
+    $stmt = $pdo->query("SELECT COALESCE(MAX(batch), 0) FROM migrations");
+    return (int) $stmt->fetchColumn();
+}
+
+function fetch_migration_rows($pdo) {
+    $stmt = $pdo->query("SELECT migration, batch, executed_at FROM migrations");
+    return $stmt->fetchAll(\PDO::FETCH_ASSOC);
+}
+
+function drop_table_safe($pdo, $driver, $table) {
+    $wrapped = db_quoted($table);
+    if ($driver === 'pgsql') {
+        $pdo->exec("DROP TABLE IF EXISTS {$wrapped} CASCADE");
+    } else {
+        $pdo->exec("DROP TABLE IF EXISTS {$wrapped}");
+    }
 }
 
 function ensure_dir($dir) {
@@ -584,16 +674,11 @@ function cmd_migrate() {
 
     $db = db_bootstrap();
     $pdo = $db->getPdo();
+    $driver = $db->getDriver();
 
-    $pdo->exec("CREATE TABLE IF NOT EXISTS migrations (
-        id INT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
-        migration VARCHAR(255) NOT NULL,
-        batch INT UNSIGNED NOT NULL,
-        executed_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-    )");
+    ensure_migrations_table($pdo, $driver);
 
-    $stmt = $pdo->query("SELECT MAX(batch) FROM migrations");
-    $currentBatch = (int) $stmt->fetchColumn();
+    $currentBatch = fetch_max_batch($pdo);
     $newBatch = $currentBatch + 1;
 
     $stmt = $pdo->query("SELECT migration FROM migrations");
@@ -627,16 +712,32 @@ function cmd_migrate() {
         }
 
         write("  {$filename} ... ", 'gray');
+        $inTransaction = false;
         try {
+            if (!$pdo->inTransaction()) {
+                $pdo->beginTransaction();
+                $inTransaction = true;
+            }
+
             $migration = new $class();
+            if (method_exists($migration, 'setDb')) {
+                $migration->setDb($db);
+            }
             $migration->up();
 
             $stmt = $pdo->prepare("INSERT INTO migrations (migration, batch) VALUES (?, ?)");
             $stmt->execute([$filename, $newBatch]);
 
+            if ($inTransaction) {
+                $pdo->commit();
+            }
+
             done();
             $migrated++;
         } catch (\Exception $e) {
+            if ($inTransaction && $pdo->inTransaction()) {
+                $pdo->rollBack();
+            }
             error('  FAILED');
             error("  {$e->getMessage()}");
             return 1;
@@ -656,6 +757,7 @@ function cmd_migrate_rollback() {
 
     $db = db_bootstrap();
     $pdo = $db->getPdo();
+    $driver = $db->getDriver();
 
     try {
         $pdo->query("SELECT 1 FROM migrations LIMIT 1");
@@ -664,8 +766,7 @@ function cmd_migrate_rollback() {
         return;
     }
 
-    $stmt = $pdo->query("SELECT MAX(batch) FROM migrations");
-    $lastBatch = (int) $stmt->fetchColumn();
+    $lastBatch = fetch_max_batch($pdo);
 
     if ($lastBatch === 0) {
         info('Nothing to rollback.');
@@ -698,16 +799,32 @@ function cmd_migrate_rollback() {
         }
 
         write("  {$filename} ... ", 'gray');
+        $inTransaction = false;
         try {
+            if (!$pdo->inTransaction()) {
+                $pdo->beginTransaction();
+                $inTransaction = true;
+            }
+
             $migration = new $class();
+            if (method_exists($migration, 'setDb')) {
+                $migration->setDb($db);
+            }
             $migration->down();
 
             $stmt = $pdo->prepare("DELETE FROM migrations WHERE migration = ? AND batch = ?");
             $stmt->execute([$filename, $lastBatch]);
 
+            if ($inTransaction) {
+                $pdo->commit();
+            }
+
             done();
             $rolledBack++;
         } catch (\Exception $e) {
+            if ($inTransaction && $pdo->inTransaction()) {
+                $pdo->rollBack();
+            }
             error('  FAILED');
             error("  {$e->getMessage()}");
             return 1;
@@ -727,21 +844,17 @@ function cmd_migrate_status() {
 
     $db = db_bootstrap();
     $pdo = $db->getPdo();
+    $driver = $db->getDriver();
 
     try {
         $pdo->query("SELECT 1 FROM migrations LIMIT 1");
     } catch (\Exception $e) {
-        $pdo->exec("CREATE TABLE IF NOT EXISTS migrations (
-            id INT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
-            migration VARCHAR(255) NOT NULL,
-            batch INT UNSIGNED NOT NULL,
-            executed_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-        )");
+        ensure_migrations_table($pdo, $driver);
     }
 
-    $stmt = $pdo->query("SELECT migration, batch, executed_at FROM migrations ORDER BY id");
+    $rows = fetch_migration_rows($pdo);
     $ran = [];
-    while ($row = $stmt->fetch(\PDO::FETCH_ASSOC)) {
+    foreach ($rows as $row) {
         $ran[$row['migration']] = $row;
     }
 
@@ -762,8 +875,8 @@ function cmd_migrate_status() {
         if (isset($ran[$filename])) {
             write(str_pad(' Ran', 10), 'green');
             write(str_pad($filename, 55));
-            write(str_pad($ran[$filename]['batch'], 8));
-            writeln($ran[$filename]['executed']);
+            write(str_pad((string) $ran[$filename]['batch'], 8));
+            writeln($ran[$filename]['executed_at']);
         } else {
             write(str_pad(' Pending', 10), 'yellow');
             write(str_pad($filename, 55));
@@ -784,19 +897,25 @@ function cmd_migrate_fresh() {
 
     $db = db_bootstrap();
     $pdo = $db->getPdo();
+    $driver = $db->getDriver();
 
-    $pdo->query("SET FOREIGN_KEY_CHECKS = 0");
+    try {
+        $pdo->beginTransaction();
+        $tables = list_tables($pdo, $driver);
 
-    $stmt = $pdo->query("SHOW TABLES");
-    $tables = $stmt->fetchAll(\PDO::FETCH_COLUMN);
-
-    foreach ($tables as $table) {
-        write("  Dropping {$table} ... ", 'gray');
-        $pdo->exec("DROP TABLE IF EXISTS `{$table}`");
-        done();
+        foreach ($tables as $table) {
+            write("  Dropping {$table} ... ", 'gray');
+            drop_table_safe($pdo, $driver, $table);
+            done();
+        }
+        $pdo->commit();
+    } catch (\Exception $e) {
+        if ($pdo->inTransaction()) {
+            $pdo->rollBack();
+        }
+        throw $e;
     }
 
-    $pdo->query("SET FOREIGN_KEY_CHECKS = 1");
     writeln();
     success('All tables dropped.');
     writeln();
@@ -826,15 +945,13 @@ function cmd_migrate_reset() {
         return;
     }
 
-    $stmt = $pdo->query("SELECT MAX(batch) FROM migrations");
-    $maxBatch = (int) $stmt->fetchColumn();
+    $maxBatch = fetch_max_batch($pdo);
 
     if ($maxBatch === 0) {
         info('Nothing to rollback.');
         return;
     }
 
-    // Rollback from highest batch to 1
     for ($batch = $maxBatch; $batch >= 1; $batch--) {
         $stmt = $pdo->prepare("SELECT migration FROM migrations WHERE batch = ? ORDER BY id DESC");
         $stmt->execute([$batch]);
@@ -856,13 +973,29 @@ function cmd_migrate_reset() {
             }
 
             write("  {$filename} ... ", 'gray');
+            $inTransaction = false;
             try {
+                if (!$pdo->inTransaction()) {
+                    $pdo->beginTransaction();
+                    $inTransaction = true;
+                }
+
                 $migration = new $class();
+                if (method_exists($migration, 'setDb')) {
+                    $migration->setDb($db);
+                }
                 $migration->down();
                 $stmt = $pdo->prepare("DELETE FROM migrations WHERE migration = ? AND batch = ?");
                 $stmt->execute([$filename, $batch]);
+
+                if ($inTransaction) {
+                    $pdo->commit();
+                }
                 done();
             } catch (\Exception $e) {
+                if ($inTransaction && $pdo->inTransaction()) {
+                    $pdo->rollBack();
+                }
                 error('  FAILED');
                 error("  {$e->getMessage()}");
                 return 1;
@@ -1006,25 +1139,30 @@ function cmd_db_wipe() {
 
     $db = db_bootstrap();
     $pdo = $db->getPdo();
+    $driver = $db->getDriver();
 
-    $pdo->query("SET FOREIGN_KEY_CHECKS = 0");
-
-    $stmt = $pdo->query("SHOW TABLES");
-    $tables = $stmt->fetchAll(\PDO::FETCH_COLUMN);
+    $tables = list_tables($pdo, $driver);
 
     if (empty($tables)) {
         info('No tables found.');
-        $pdo->query("SET FOREIGN_KEY_CHECKS = 1");
         return;
     }
 
-    foreach ($tables as $table) {
-        write("  Dropping {$table} ... ", 'gray');
-        $pdo->exec("DROP TABLE IF EXISTS `{$table}`");
-        done();
+    $pdo->beginTransaction();
+    try {
+        foreach ($tables as $table) {
+            write("  Dropping {$table} ... ", 'gray');
+            drop_table_safe($pdo, $driver, $table);
+            done();
+        }
+        $pdo->commit();
+    } catch (\Exception $e) {
+        if ($pdo->inTransaction()) {
+            $pdo->rollBack();
+        }
+        throw $e;
     }
 
-    $pdo->query("SET FOREIGN_KEY_CHECKS = 1");
     writeln();
     success('All tables dropped.');
 }

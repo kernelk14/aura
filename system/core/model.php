@@ -7,6 +7,7 @@ class Model extends Base
     protected $attributes = [];
     protected $original = [];
     protected $hidden = [];
+    protected $visible = [];
     protected $casts = [];
     protected $fillable = [];
     protected $guarded = ['id'];
@@ -74,6 +75,11 @@ class Model extends Base
         return null;
     }
 
+    public function getRawAttribute($key)
+    {
+        return $this->attributes[$key] ?? null;
+    }
+
     public function __get($key)
     {
         return $this->getAttribute($key);
@@ -89,6 +95,11 @@ class Model extends Base
         return isset($this->attributes[$key]) || isset($this->relations[$key]);
     }
 
+    public function __unset($key)
+    {
+        unset($this->attributes[$key], $this->relations[$key]);
+    }
+
     public function toArray()
     {
         $attributes = $this->attributes;
@@ -97,11 +108,21 @@ class Model extends Base
             unset($attributes[$key]);
         }
 
+        if (!empty($this->visible)) {
+            $attributes = array_intersect_key($attributes, array_flip($this->visible));
+        }
+
         foreach ($attributes as $key => $value) {
             $attributes[$key] = $this->castAttribute($key, $value);
         }
 
         foreach ($this->relations as $key => $value) {
+            if (in_array($key, $this->hidden, true)) {
+                continue;
+            }
+            if (!empty($this->visible) && !in_array($key, $this->visible, true)) {
+                continue;
+            }
             if ($value instanceof Model) {
                 $attributes[$key] = $value->toArray();
             } elseif (is_array($value)) {
@@ -121,10 +142,12 @@ class Model extends Base
         return json_encode($this->toArray(), $options);
     }
 
-    public function setRawAttributes(array $attributes)
+    public function setRawAttributes(array $attributes, $sync = false)
     {
         $this->attributes = $attributes;
-        $this->original = $attributes;
+        if ($sync) {
+            $this->original = $attributes;
+        }
         return $this;
     }
 
@@ -139,7 +162,7 @@ class Model extends Base
     public function isDirty($key = null)
     {
         if ($key === null) {
-            return $this->attributes !== $this->original;
+            return $this->getDirty() !== [];
         }
         return ($this->attributes[$key] ?? null) !== ($this->original[$key] ?? null);
     }
@@ -158,9 +181,9 @@ class Model extends Base
     public function save()
     {
         if ($this->timestamps) {
-            $now = date('Y-m-d H:i:s');
+            $now = $this->freshTimestamp();
             if (!$this->exists) {
-                if (!isset($this->attributes['created_at'])) {
+                if (!array_key_exists('created_at', $this->attributes)) {
                     $this->attributes['created_at'] = $now;
                 }
                 $this->attributes['updated_at'] = $now;
@@ -188,7 +211,7 @@ class Model extends Base
         $id = $query->insert($this->attributes);
 
         if ($id && $this->incrementing) {
-            $this->attributes[$this->primaryKey] = (int) $id;
+            $this->attributes[$this->primaryKey] = $this->castKey($id);
         }
 
         $this->exists = true;
@@ -213,13 +236,17 @@ class Model extends Base
     public function destroy($ids)
     {
         $ids = is_array($ids) ? $ids : func_get_args();
+        if (empty($ids)) {
+            return 0;
+        }
         $query = $this->newQuery();
         return $query->whereIn($this->primaryKey, $ids)->delete();
     }
 
     public function getKey()
     {
-        return $this->attributes[$this->primaryKey] ?? null;
+        $key = $this->attributes[$this->primaryKey] ?? null;
+        return $this->castKey($key);
     }
 
     public function getKeyName()
@@ -237,14 +264,14 @@ class Model extends Base
         $class = basename(str_replace('\\', '/', $class));
         $class = preg_replace('/_?Model$/', '', $class);
 
-        return $this->table = strtolower(preg_replace('/(?<!^)[A-Z]/', '_$0', $class)) . 's';
+        return $this->table = $this->pluralize($class);
     }
 
     public function getForeignKey()
     {
         $class = basename(str_replace('\\', '/', static::class));
         $class = preg_replace('/_?Model$/', '', $class);
-        return strtolower($class) . '_id';
+        return strtolower(preg_replace('/(?<!^)([A-Z])/', '_$1', $class)) . '_id';
     }
 
     public function fresh()
@@ -259,8 +286,8 @@ class Model extends Base
     {
         $fresh = $this->fresh();
         if ($fresh) {
-            $this->attributes = $fresh->attributes;
-            $this->original = $fresh->original;
+            $this->setRawAttributes($fresh->getRawAttributes(), true);
+            $this->exists = true;
             $this->relations = $fresh->relations;
         }
         return $this;
@@ -284,19 +311,49 @@ class Model extends Base
         return $this->relations;
     }
 
+    public function unsetRelation($key)
+    {
+        unset($this->relations[$key]);
+        return $this;
+    }
+
     public function load($relations)
     {
         $relations = is_array($relations) ? $relations : func_get_args();
+        $allKeys = [];
 
-        foreach ($relations as $relation) {
+        foreach ($relations as $key) {
+            if (is_string($key) && strpos($key, '.') !== false) {
+                $parts = explode('.', $key);
+                $allKeys[] = $parts[0];
+                $allKeys = array_merge($allKeys, $parts);
+            } else {
+                $allKeys[] = $key;
+            }
+        }
+
+        $allKeys = array_unique($allKeys);
+
+        foreach ($allKeys as $relation) {
             if (!method_exists($this, $relation)) {
                 continue;
             }
 
-            $results = $this->$relation()->get();
-            $this->setRelation($relation, $results);
+            $this->relations[$relation] = $this->$relation()->get();
         }
 
+        return $this;
+    }
+
+    public function loadMissing($relations)
+    {
+        $relations = is_array($relations) ? $relations : func_get_args();
+        $missing = array_filter($relations, function ($r) {
+            return !array_key_exists($r, $this->relations);
+        });
+        if (!empty($missing)) {
+            $this->load($missing);
+        }
         return $this;
     }
 
@@ -305,7 +362,7 @@ class Model extends Base
         $instance = new static;
         $query = $instance->newQuery();
         $query->setModel(static::class);
-        $query->eagerLoads($relations);
+        $query->with($relations);
         return $query;
     }
 
@@ -317,7 +374,9 @@ class Model extends Base
 
         $this->setRelationMeta('hasMany', $related, $foreignKey, $localKey);
 
-        return $instance->where($foreignKey, $this->getAttribute($localKey));
+        return $instance->newQuery()
+            ->setModel($related)
+            ->where($foreignKey, $this->getRawAttribute($localKey));
     }
 
     public function belongsTo($related, $foreignKey = null, $ownerKey = null)
@@ -328,7 +387,9 @@ class Model extends Base
 
         $this->setRelationMeta('belongsTo', $related, $foreignKey, $ownerKey);
 
-        return $instance->where($ownerKey, $this->getAttribute($foreignKey));
+        return $instance->newQuery()
+            ->setModel($related)
+            ->where($ownerKey, $this->getRawAttribute($foreignKey));
     }
 
     public function hasOne($related, $foreignKey = null, $localKey = null)
@@ -339,7 +400,9 @@ class Model extends Base
 
         $this->setRelationMeta('hasOne', $related, $foreignKey, $localKey);
 
-        return $instance->where($foreignKey, $this->getAttribute($localKey));
+        return $instance->newQuery()
+            ->setModel($related)
+            ->where($foreignKey, $this->getRawAttribute($localKey));
     }
 
     public function belongsToMany($related, $table = null, $foreignPivotKey = null, $relatedPivotKey = null)
@@ -350,8 +413,8 @@ class Model extends Base
 
         if (!$table) {
             $segments = [
-                basename(str_replace('\\', '/', static::class)),
-                basename(str_replace('\\', '/', $related)),
+                $this->getShortClassName(),
+                $instance->getShortClassName(),
             ];
             sort($segments);
             $table = strtolower(implode('_', $segments));
@@ -360,6 +423,7 @@ class Model extends Base
         $localKey = $this->getKey();
 
         $query = (new static)->newQuery()
+            ->setModel($related)
             ->select($instance->getTable() . '.*')
             ->join($table, $table . '.' . $relatedPivotKey, '=', $instance->getTable() . '.' . $instance->getKeyName())
             ->where($table . '.' . $foreignPivotKey, $localKey);
@@ -399,10 +463,22 @@ class Model extends Base
 
     public static function findMany(array $ids)
     {
+        if (empty($ids)) {
+            return [];
+        }
         $instance = new static;
         $query = $instance->newQuery();
         $query->setModel(static::class);
         return $query->whereIn($instance->getKeyName(), $ids)->get();
+    }
+
+    public static function findOrFail($id)
+    {
+        $result = static::find($id);
+        if (!$result) {
+            throw new \RuntimeException(static::class . " with ID {$id} not found.");
+        }
+        return $result;
     }
 
     public static function all()
@@ -481,19 +557,7 @@ class Model extends Base
     public static function pluck($column, $key = null)
     {
         $instance = new static;
-        $results = $instance->newQuery()->select([$column] + ($key ? [$key] : []))->get();
-
-        if ($key) {
-            $map = [];
-            foreach ($results as $row) {
-                $map[$row[$key]] = $row[$column];
-            }
-            return $map;
-        }
-
-        return array_map(function ($row) use ($column) {
-            return $row[$column];
-        }, $results);
+        return $instance->newQuery()->pluck($column, $key);
     }
 
     public static function each(callable $callback)
@@ -511,14 +575,21 @@ class Model extends Base
                 ->setModel(static::class)
                 ->paginate($size, $page);
 
-            if (count($results->items()) === 0) {
+            $items = $results->items();
+            if (count($items) === 0) {
                 break;
             }
 
-            $callback($results->items(), $page);
+            $callback($items, $page);
 
             $page++;
         } while ($results->hasMorePages());
+    }
+
+    public static function truncate()
+    {
+        $instance = new static;
+        $instance->newQuery()->truncate();
     }
 
     // --- Internal ---
@@ -539,13 +610,41 @@ class Model extends Base
     {
         $class = static::class;
 
-        foreach (class_uses_recursive($class) as $trait) {
+        if (function_exists('class_uses_recursive')) {
+            $traits = class_uses_recursive($class);
+        } else {
+            $traits = $this->classUsesRecursive($class);
+        }
+
+        foreach ($traits as $trait) {
             $trait = basename(str_replace('\\', '/', $trait));
             $method = 'boot' . $trait;
             if (method_exists($class, $method)) {
                 $class::$method();
             }
         }
+    }
+
+    protected function classUsesRecursive($class)
+    {
+        if (is_object($class)) {
+            $class = get_class($class);
+        }
+
+        $results = [];
+        foreach (array_reverse(class_parents($class) ?: []) + [$class => $class] as $current) {
+            $results += $this->traitUsesRecursive($current);
+        }
+        return array_unique($results);
+    }
+
+    protected function traitUsesRecursive($class)
+    {
+        $traits = class_uses($class) ?: [];
+        foreach ($traits as $trait) {
+            $traits += $this->traitUsesRecursive($trait);
+        }
+        return $traits;
     }
 
     protected function newQuery()
@@ -584,7 +683,7 @@ class Model extends Base
     protected function applyDefaultEagerLoads($query)
     {
         if (!empty($this->with)) {
-            $query->eagerLoads($this->with);
+            $query->with($this->with);
         }
     }
 
@@ -616,7 +715,7 @@ class Model extends Base
         return static::$relationMeta[$class][$relation] ?? null;
     }
 
-    protected function getDirty()
+    public function getDirty()
     {
         $dirty = [];
         foreach ($this->attributes as $key => $value) {
@@ -630,9 +729,9 @@ class Model extends Base
     protected function isFillable($key)
     {
         if ($this->hasFillable()) {
-            return in_array($key, $this->fillable);
+            return in_array($key, $this->fillable, true);
         }
-        return !in_array($key, $this->guarded);
+        return !in_array($key, $this->guarded, true);
     }
 
     protected function hasFillable()
@@ -651,25 +750,139 @@ class Model extends Base
         switch ($cast) {
             case 'int':
             case 'integer':
-                return (int) $value;
+                return $value === null ? null : (int) $value;
             case 'real':
             case 'float':
             case 'double':
-                return (float) $value;
+                return $value === null ? null : (float) $value;
             case 'string':
-                return (string) $value;
+                return $value === null ? null : (string) $value;
             case 'bool':
             case 'boolean':
+                if ($value === null) {
+                    return null;
+                }
+                if (is_bool($value)) {
+                    return $value;
+                }
+                if (is_string($value)) {
+                    $lower = strtolower($value);
+                    if (in_array($lower, ['true', '1', 'yes', 'on'], true)) {
+                        return true;
+                    }
+                    if (in_array($lower, ['false', '0', 'no', 'off', ''], true)) {
+                        return false;
+                    }
+                }
                 return (bool) $value;
             case 'array':
             case 'json':
-                return json_decode($value, true) ?? [];
+                if ($value === null) {
+                    return null;
+                }
+                if (is_array($value)) {
+                    return $value;
+                }
+                if (is_string($value)) {
+                    return json_decode($value, true);
+                }
+                return (array) $value;
             case 'object':
-                return json_decode($value) ?? new \stdClass;
+                if ($value === null) {
+                    return null;
+                }
+                if (is_object($value)) {
+                    return $value;
+                }
+                if (is_string($value)) {
+                    return json_decode($value);
+                }
+                return (object) $value;
+            case 'collection':
+                if ($value === null) {
+                    return [];
+                }
+                if (is_array($value)) {
+                    return $value;
+                }
+                if (is_string($value)) {
+                    return json_decode($value, true) ?? [];
+                }
+                return (array) $value;
             case 'date':
                 return $value ? new \DateTime($value) : null;
+            case 'datetime':
+                return $value ? new \DateTime($value) : null;
+            case 'timestamp':
+                return $value ? (int) strtotime($value) : null;
             default:
                 return $value;
         }
+    }
+
+    protected function castKey($value)
+    {
+        if ($value === null) {
+            return null;
+        }
+        if ($this->keyType === 'int') {
+            return (int) $value;
+        }
+        if ($this->keyType === 'string') {
+            return (string) $value;
+        }
+        return $value;
+    }
+
+    protected function freshTimestamp()
+    {
+        return date('Y-m-d H:i:s');
+    }
+
+    protected function getShortClassName()
+    {
+        $class = basename(str_replace('\\', '/', static::class));
+        return preg_replace('/_?Model$/', '', $class);
+    }
+
+    protected function pluralize($word)
+    {
+        $word = strtolower(preg_replace('/(?<!^)([A-Z])/', '_$1', $word));
+
+        $irregular = [
+            'person' => 'people',
+            'man' => 'men',
+            'woman' => 'women',
+            'child' => 'children',
+            'foot' => 'feet',
+            'tooth' => 'teeth',
+            'mouse' => 'mice',
+            'goose' => 'geese',
+        ];
+        if (isset($irregular[$word])) {
+            return $irregular[$word];
+        }
+
+        $uncountable = ['info', 'equipment', 'fish', 'sheep', 'series', 'species', 'money', 'data'];
+        if (in_array($word, $uncountable, true)) {
+            return $word;
+        }
+
+        if (preg_match('/(s|x|z|ch|sh)$/', $word)) {
+            return $word . 'es';
+        }
+        if (preg_match('/([^aeiou])y$/', $word)) {
+            return substr($word, 0, -1) . 'ies';
+        }
+        if (preg_match('/(f|fe)$/', $word)) {
+            if (substr($word, -2) === 'fe') {
+                return substr($word, 0, -2) . 'ves';
+            }
+            return substr($word, 0, -1) . 'ves';
+        }
+        if (preg_match('/(o)$/', $word)) {
+            return $word . 'es';
+        }
+        return $word . 's';
     }
 }
